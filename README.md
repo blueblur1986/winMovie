@@ -2,6 +2,8 @@
 
 A small, native WinUI 3 video editor built around the quick editing flow of iMovie '08–'11.
 
+Current preview: **v1.0-beta.2**. The next feature iteration will be beta 3; release candidates and the stable release will be named when the maintainer decides they are ready.
+
 ## What works
 
 - Import MP4, MOV, MKV, AVI, M4V, and WebM video through a file picker.

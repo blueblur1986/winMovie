@@ -41,7 +41,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        Title = "WinMovie";
+        Title = "WinMovie · 1.0 Beta 2";
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1400, 900));
         Preview.SetMediaPlayer(_player);
         _player.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>

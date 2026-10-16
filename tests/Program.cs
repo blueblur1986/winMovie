@@ -54,6 +54,23 @@ try
     if (autoInfo.Width != 640 || autoInfo.Height != 360 || !autoInfo.HasAudio)
         throw new Exception("Automatically selected encoder did not produce a valid MP4.");
     Console.WriteLine("PASS: automatic encoder MP4 export");
+    var musicPath = Path.Combine(root, "music.wav");
+    var musicGenerated = await MediaEngine.RunAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=4", musicPath]);
+    if (musicGenerated.ExitCode != 0) throw new Exception(musicGenerated.Error);
+    if (await MediaEngine.ProbeAudioDurationAsync(musicPath) < 3.9) throw new Exception("Music duration was not detected.");
+    var layered = new MovieProject { Assets = [asset], Clips = project.Clips.Take(2).ToList(),
+        Titles = [new TitleItem { Start = .8, Duration = 1.9, Text = "Across both clips", Preset = TitlePreset.LowerThird,
+            Font = "Georgia", Color = "FFD34E", BackgroundColor = "000000", BackgroundOpacity = .65, Shadow = true, Outline = true }],
+        Music = [new MusicClip { Path = musicPath, Start = .2, In = .1, Out = 1.7, Volume = .4,
+            FadeOut = true, FadeOutDuration = 1.1 }] };
+    var layeredOutput = Path.Combine(root, "layered.mp4");
+    await MediaEngine.ExportAsync(layered, layeredOutput, new ExportSettings(640, 360, "Software (H.264)"),
+        (_, _) => { }, CancellationToken.None);
+    var layeredInfo = await MediaEngine.ProbeAsync(layeredOutput);
+    if (!layeredInfo.HasAudio || layeredInfo.Duration < 2 || layeredInfo.Width != 640)
+        throw new Exception("Title and music track render is invalid.");
+    Console.WriteLine("PASS: timed title across clips and fading music track");
 }
 finally
 {

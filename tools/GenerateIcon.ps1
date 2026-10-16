@@ -89,13 +89,46 @@ function IconPng([int]$size) {
     $stream = [System.IO.MemoryStream]::new()
     $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
     $bitmap.Dispose()
-    return $stream.ToArray()
+    return ,$stream.ToArray()
+}
+
+function IconBitmapData([int]$size) {
+    $bitmap = [System.Drawing.Bitmap]::new($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+    $graphics.DrawImage($master, 0, 0, $size, $size)
+    $graphics.Dispose()
+    $stream = [System.IO.MemoryStream]::new()
+    $writer = [System.IO.BinaryWriter]::new($stream)
+    $writer.Write([uint32]40)
+    $writer.Write([int32]$size)
+    $writer.Write([int32]($size * 2))
+    $writer.Write([uint16]1)
+    $writer.Write([uint16]32)
+    foreach ($unused in 1..6) { $writer.Write([uint32]0) }
+    for ($y = $size - 1; $y -ge 0; $y--) {
+        for ($x = 0; $x -lt $size; $x++) {
+            $pixel = $bitmap.GetPixel($x, $y)
+            $writer.Write([byte]$pixel.B)
+            $writer.Write([byte]$pixel.G)
+            $writer.Write([byte]$pixel.R)
+            $writer.Write([byte]$pixel.A)
+        }
+    }
+    $maskBytesPerRow = [int](($size + 31) / 32) * 4
+    $writer.Write([byte[]]::new($maskBytesPerRow * $size))
+    $writer.Flush()
+    $bytes = $stream.ToArray()
+    $writer.Dispose()
+    $bitmap.Dispose()
+    return ,$bytes
 }
 
 $png = IconPng 256
 [System.IO.File]::WriteAllBytes((Join-Path $assetDirectory 'WinMovie.png'), $png)
 $sizes = @(16, 32, 48, 256)
-$images = @($sizes | ForEach-Object { IconPng $_ })
+$images = @($sizes | ForEach-Object { IconBitmapData $_ })
 $iconPath = Join-Path $assetDirectory 'WinMovie.ico'
 $file = [System.IO.File]::Create($iconPath)
 $writer = [System.IO.BinaryWriter]::new($file)

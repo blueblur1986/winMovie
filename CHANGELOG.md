@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.0-beta.4
+
+- Ctrl-click timeline clips to select multiple, or Ctrl+A to select all, then apply common speed, volume, normalization, fades, and incoming transitions or delete them together.
+- Press Space over a source filmstrip to play from the hovered frame and Space again to pause; Space plays or pauses the selected timeline. Keep the Play/Pause button synchronized with actual playback state.
+- Add a timed title track with independent start and duration, drag-to-position cards, font, color, background, opacity, shadow, outline, and placement controls. Titles can cross clip boundaries.
+- Add a timed background music track with source trimming, volume, drag-to-position, and optional end fade.
+- Widen the timeline drop target and route mouse wheel input over filmstrips to the media bin's vertical scroller.
+- Use dark native window chrome and embed the app icon correctly in the EXE while setting window and taskbar icons.
+
 ## v1.0-beta.3
 
 - Render a low-resolution timeline preview in the background so playback includes transitions, titles, speed, fades, and audio processing.

@@ -12,6 +12,7 @@ using Windows.Media.Playback;
 using Windows.Storage.Pickers;
 using Windows.System;
 using Windows.UI;
+using Windows.UI.Core;
 
 namespace WinMovie;
 
@@ -24,6 +25,11 @@ public sealed partial class MainWindow : Window
     private readonly string _previewDirectory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "WinMoviePreviews");
     private MediaAsset? _selectedAsset;
     private int _selectedClip = -1;
+    private readonly HashSet<int> _selectedClips = [];
+    private int _selectedTitle = -1, _selectedMusic = -1;
+    private MediaAsset? _hoveredAsset;
+    private double _hoveredTime;
+    private bool _timelineFocused, _spaceSourcePlaying;
     private string? _projectPath;
     private string? _previewPath;
     private double _rangeStart, _rangeEnd;
@@ -47,11 +53,26 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        Title = "WinMovie · 1.0 Beta 3";
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(1400, 900));
+        Title = "WinMovie · 1.0 Beta 4";
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+        AppWindow.Resize(new Windows.Graphics.SizeInt32(1500, 1000));
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "WinMovie.ico");
-        if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
+        if (File.Exists(iconPath))
+        {
+            AppWindow.SetIcon(iconPath);
+            AppWindow.SetTaskbarIcon(iconPath);
+            AppWindow.SetTitleBarIcon(iconPath);
+        }
+        if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+        {
+            AppWindow.TitleBar.ButtonBackgroundColor = Color.FromArgb(255, 24, 33, 45);
+            AppWindow.TitleBar.ButtonForegroundColor = Colors.White;
+            AppWindow.TitleBar.ButtonHoverBackgroundColor = Color.FromArgb(255, 49, 65, 85);
+            AppWindow.TitleBar.ButtonHoverForegroundColor = Colors.White;
+        }
         Preview.SetMediaPlayer(_player);
+        _player.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdatePlaybackButton);
         _player.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
             if (_pendingPosition is { } position)
@@ -65,6 +86,7 @@ public sealed partial class MainWindow : Window
         TitleBox.SelectedIndex = 0;
         VolumeSlider.Value = 1;
         EditorSurface.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Editor_KeyDown), true);
+        TimelinePanel.PointerPressed += (_, _) => _timelineFocused = true;
         RefreshAll();
     }
 
@@ -104,6 +126,8 @@ public sealed partial class MainWindow : Window
         _projectPath = null;
         _selectedAsset = null;
         _selectedClip = -1;
+        _selectedClips.Clear(); _selectedTitle = -1; _selectedMusic = -1;
+        _timelineFocused = false; _hoveredAsset = null; _spaceSourcePlaying = false;
         _previewPath = null;
         _player.Source = null;
         CancelPreviewRender();
@@ -129,6 +153,8 @@ public sealed partial class MainWindow : Window
             _projectPath = file.Path;
             _selectedAsset = null;
             _selectedClip = -1;
+            _selectedClips.Clear(); _selectedTitle = -1; _selectedMusic = -1;
+            _timelineFocused = false; _hoveredAsset = null; _spaceSourcePlaying = false;
             _previewPath = null;
             _player.Source = null;
             CancelPreviewRender();
@@ -251,6 +277,7 @@ public sealed partial class MainWindow : Window
     {
         RefreshAssets();
         RefreshTimeline();
+        RefreshTracks();
         RefreshInspector();
         RangeLabel.Text = _selectedAsset is null ? "Import a video to begin" : FormatRange();
     }
@@ -290,10 +317,13 @@ public sealed partial class MainWindow : Window
             strip.PointerMoved += Filmstrip_PointerMoved;
             strip.PointerReleased += Filmstrip_PointerReleased;
             strip.PointerCaptureLost += Filmstrip_PointerCaptureLost;
+            strip.PointerEntered += (_, _) => _hoveredAsset = asset;
+            strip.PointerExited += (_, _) => { if (_hoveredAsset == asset) _hoveredAsset = null; };
             _mediaStrips[asset.Path] = strip;
             UpdateRangeOverlay(strip, asset);
             var scroller = new ScrollViewer { Content = strip, HorizontalScrollMode = ScrollMode.Enabled,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollMode = ScrollMode.Disabled };
+            scroller.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler(MediaStrip_Wheel), true);
             card.Children.Add(scroller);
             var drag = new Border { Background = Brush("#334E78"), CornerRadius = new CornerRadius(4), Padding = new Thickness(8, 3, 8, 3),
                 CanDrag = true, HorizontalAlignment = HorizontalAlignment.Left,
@@ -333,6 +363,8 @@ public sealed partial class MainWindow : Window
     {
         _selectedAsset = asset;
         _selectedClip = -1;
+        _selectedClips.Clear(); _selectedTitle = -1; _selectedMusic = -1;
+        _timelineFocused = false; _spaceSourcePlaying = false;
         _boundarySelected = false;
         _rangeStart = 0;
         _rangeEnd = asset.Duration;
@@ -352,6 +384,13 @@ public sealed partial class MainWindow : Window
 
     private static double FilmTime(MediaAsset asset, double x) => Math.Clamp(x / StripWidth * asset.Duration, 0, asset.Duration);
 
+    private void MediaStrip_Wheel(object sender, PointerRoutedEventArgs e)
+    {
+        var delta = e.GetCurrentPoint((UIElement)sender).Properties.MouseWheelDelta;
+        MediaScroller.ChangeView(null, Math.Clamp(MediaScroller.VerticalOffset - delta, 0, MediaScroller.ScrollableHeight), null);
+        e.Handled = true;
+    }
+
     private void Filmstrip_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (sender is not Canvas strip || strip.Tag is not MediaAsset asset) return;
@@ -360,6 +399,8 @@ public sealed partial class MainWindow : Window
         {
             _selectedAsset = asset;
             _selectedClip = -1;
+            _selectedClips.Clear(); _selectedTitle = -1; _selectedMusic = -1;
+            _timelineFocused = false; _spaceSourcePlaying = false;
             _boundarySelected = false;
             _rangeStart = 0;
             _rangeEnd = asset.Duration;
@@ -389,6 +430,8 @@ public sealed partial class MainWindow : Window
     {
         if (sender is not Canvas strip || strip.Tag is not MediaAsset asset) return;
         var time = FilmTime(asset, e.GetCurrentPoint(strip).Position.X);
+        _hoveredAsset = asset;
+        _hoveredTime = time;
         if (_draggingRange && _dragStrip == strip)
         {
             if (_rangeDragMode == 1) _rangeStart = Math.Min(time, _rangeEnd - .08);
@@ -398,6 +441,7 @@ public sealed partial class MainWindow : Window
         }
         if ((DateTime.UtcNow - _lastSkim).TotalMilliseconds < 65) return;
         _lastSkim = DateTime.UtcNow;
+        if (_spaceSourcePlaying && _previewPath == asset.Path) return;
         _player.Pause();
         LoadPreview(asset.Path, time);
         PreviewTime.Text = Time(time);
@@ -510,8 +554,8 @@ public sealed partial class MainWindow : Window
             content.Children.Add(new TextBlock { Text = $"{Time(clip.Duration)} · drag to reorder", FontSize = 11, Opacity = .7 });
             var button = new Button { Content = content, Width = 158,
                 Height = 119, HorizontalContentAlignment = HorizontalAlignment.Stretch, CanDrag = true, AllowDrop = true,
-                Background = i == _selectedClip && !_boundarySelected ? Brush("#334E78") : Brush("#252B31") };
-            button.Click += (_, _) => SelectClip(index);
+                Background = _selectedClips.Contains(i) ? Brush("#334E78") : Brush("#252B31") };
+            button.Click += (_, _) => SelectClip(index, ControlDown());
             button.DragOver += Timeline_DragOver;
             button.Drop += async (_, args) =>
             {
@@ -531,6 +575,249 @@ public sealed partial class MainWindow : Window
         AddBoundarySlot(_project.Clips.Count);
         ProjectDuration.Text = $"{_project.Clips.Count} clips · {Time(duration)}";
         RefreshBoundaryControls();
+    }
+
+    private void RefreshTracks()
+    {
+        const double pixelsPerSecond = 65;
+        TitleTrackCanvas.Width = MusicTrackCanvas.Width = Math.Max(400, TimelineDuration() * pixelsPerSecond + 100);
+        TitleTrackCanvas.Children.Clear();
+        for (var i = 0; i < _project.Titles.Count; i++)
+        {
+            var index = i;
+            var title = _project.Titles[i];
+            var button = new Button { Width = Math.Max(95, title.Duration * pixelsPerSecond), Height = 56, CanDrag = true,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Background = i == _selectedTitle ? Brush("#405B8F") : Brush("#34435A"),
+                Content = new StackPanel { Children =
+                {
+                    new TextBlock { Text = title.Text, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 145 },
+                    new TextBlock { Text = $"{PreciseTime(title.Start)} · {PreciseTime(title.Duration)}", FontSize = 11, Opacity = .7 }
+                } } };
+            button.Click += async (_, _) => { SelectTitle(index); await EditTitleAsync(title); };
+            button.DragStarting += (_, args) =>
+            {
+                args.Data.SetText(JsonSerializer.Serialize(new DragPayload("title", Index: index)));
+                args.Data.RequestedOperation = DataPackageOperation.Move;
+            };
+            Canvas.SetLeft(button, title.Start * pixelsPerSecond);
+            TitleTrackCanvas.Children.Add(button);
+        }
+        MusicTrackCanvas.Children.Clear();
+        for (var i = 0; i < _project.Music.Count; i++)
+        {
+            var index = i;
+            var music = _project.Music[i];
+            var button = new Button { Width = Math.Max(105, music.Duration * pixelsPerSecond), Height = 56, CanDrag = true,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Background = i == _selectedMusic ? Brush("#376C66") : Brush("#2B4D4A"),
+                Content = new StackPanel { Children =
+                {
+                    new TextBlock { Text = System.IO.Path.GetFileName(music.Path), TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 170 },
+                    new TextBlock { Text = $"{PreciseTime(music.Start)} · {PreciseTime(music.Duration)}{(music.FadeOut ? " · fade out" : "")}", FontSize = 11, Opacity = .7 }
+                } } };
+            button.Click += async (_, _) => { SelectMusic(index); await EditMusicAsync(music); };
+            button.DragStarting += (_, args) =>
+            {
+                args.Data.SetText(JsonSerializer.Serialize(new DragPayload("music", Index: index)));
+                args.Data.RequestedOperation = DataPackageOperation.Move;
+            };
+            Canvas.SetLeft(button, music.Start * pixelsPerSecond);
+            MusicTrackCanvas.Children.Add(button);
+        }
+    }
+
+    private void Track_DragOver(object sender, DragEventArgs e)
+    {
+        e.AcceptedOperation = DataPackageOperation.Copy | DataPackageOperation.Move;
+        e.Handled = true;
+    }
+
+    private async void TitleTrack_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (!e.DataView.Contains(StandardDataFormats.Text)) return;
+        DragPayload? payload;
+        try { payload = JsonSerializer.Deserialize<DragPayload>(await e.DataView.GetTextAsync()); }
+        catch { return; }
+        if (payload?.Kind == "title" && payload.Index >= 0 && payload.Index < _project.Titles.Count)
+        {
+            var title = _project.Titles[payload.Index];
+            title.Start = Math.Clamp(e.GetPosition(TitleTrackCanvas).X / 65, 0, Math.Max(0, TimelineDuration() - title.Duration));
+            SelectTitle(payload.Index); InvalidateTimelinePreview();
+        }
+        else await DropAtAsync(e, TimelineInsertionIndex(e));
+    }
+
+    private async void MusicTrack_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (!e.DataView.Contains(StandardDataFormats.Text)) return;
+        DragPayload? payload;
+        try { payload = JsonSerializer.Deserialize<DragPayload>(await e.DataView.GetTextAsync()); }
+        catch { return; }
+        if (payload?.Kind == "music" && payload.Index >= 0 && payload.Index < _project.Music.Count)
+        {
+            var music = _project.Music[payload.Index];
+            music.Start = Math.Clamp(e.GetPosition(MusicTrackCanvas).X / 65, 0, Math.Max(0, TimelineDuration() - .1));
+            SelectMusic(payload.Index); InvalidateTimelinePreview();
+        }
+        else await DropAtAsync(e, TimelineInsertionIndex(e));
+    }
+
+    private (TimelineClip Clip, double Position)? SourceAt(double timelineTime)
+    {
+        var start = 0d;
+        for (var i = 0; i < _project.Clips.Count; i++)
+        {
+            var clip = _project.Clips[i];
+            if (i > 0 && clip.TransitionIn != TransitionKind.Cut)
+                start -= Math.Min(Math.Clamp(clip.TransitionDuration, .05, 10), Math.Min(start, clip.Duration) / 2);
+            if (timelineTime <= start + clip.Duration || i == _project.Clips.Count - 1)
+                return (clip, Math.Clamp(clip.In + Math.Max(0, timelineTime - start) * clip.Speed, clip.In, clip.Out));
+            start += clip.Duration;
+        }
+        return null;
+    }
+
+    private void SelectTitle(int index)
+    {
+        _selectedTitle = index; _selectedMusic = -1; _selectedClip = -1; _selectedClips.Clear();
+        _boundarySelected = false; _timelineFocused = true; _previewPlayback = false; _spaceSourcePlaying = false;
+        _player.Pause();
+        var source = SourceAt(_project.Titles[index].Start);
+        if (source is { } current) LoadPreview(current.Clip.SourcePath, current.Position);
+        PreviewMode.Text = "Timeline · title";
+        RefreshTimeline(); RefreshTracks(); RefreshInspector();
+    }
+
+    private void SelectMusic(int index)
+    {
+        _selectedMusic = index; _selectedTitle = -1; _selectedClip = -1; _selectedClips.Clear();
+        _boundarySelected = false; _timelineFocused = true; _spaceSourcePlaying = false;
+        _player.Pause(); _previewPlayback = false;
+        RefreshTimeline(); RefreshTracks(); RefreshInspector();
+    }
+
+    private async void AddTitle_Click(object sender, RoutedEventArgs e)
+    {
+        if (_project.Clips.Count == 0) { await MessageAsync("Add video first", "Titles need a timeline to appear over."); return; }
+        var start = _selectedClip >= 0 ? TimelineClipStart(_selectedClip) :
+            _previewPlayback ? _player.PlaybackSession.Position.TotalSeconds : 0;
+        var item = new TitleItem { Start = start, Duration = Math.Min(3, Math.Max(.1, TimelineDuration() - start)) };
+        if (!await EditTitleAsync(item, true)) return;
+        _project.Titles.Add(item);
+        SelectTitle(_project.Titles.Count - 1);
+        InvalidateTimelinePreview();
+    }
+
+    private static ComboBox Choice(params (string Label, string Value)[] options)
+    {
+        var box = new ComboBox { MinWidth = 180 };
+        foreach (var option in options) box.Items.Add(new ComboBoxItem { Content = option.Label, Tag = option.Value });
+        box.SelectedIndex = 0;
+        return box;
+    }
+
+    private static void SelectChoice(ComboBox box, string value)
+    {
+        for (var i = 0; i < box.Items.Count; i++)
+            if ((box.Items[i] as ComboBoxItem)?.Tag?.ToString() == value) { box.SelectedIndex = i; return; }
+    }
+
+    private static string ChoiceValue(ComboBox box) => (box.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
+
+    private async Task<bool> EditTitleAsync(TitleItem item, bool adding = false)
+    {
+        var text = new TextBox { Header = "Text", Text = item.Text, Width = 360 };
+        var start = new NumberBox { Header = "Start on timeline (seconds)", Minimum = 0, Maximum = Math.Max(.1, TimelineDuration()), Value = item.Start, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+        var duration = new NumberBox { Header = "Duration (seconds)", Minimum = .1, Maximum = Math.Max(.1, TimelineDuration()), Value = item.Duration, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+        var preset = Choice(("Center", "Center"), ("Lower third", "LowerThird"), ("Opening", "Opening"));
+        SelectChoice(preset, item.Preset.ToString());
+        var font = Choice(("Segoe UI", "Segoe UI"), ("Arial", "Arial"), ("Georgia", "Georgia"), ("Consolas", "Consolas"), ("Times New Roman", "Times New Roman"));
+        SelectChoice(font, item.Font);
+        var size = new NumberBox { Header = "Font size at 1080p", Minimum = 16, Maximum = 160, Value = item.FontSize, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+        var colors = new (string, string)[] { ("White", "FFFFFF"), ("Black", "000000"), ("Gold", "FFD34E"), ("Sky blue", "8EDCFF"), ("Mint", "93F0D1"), ("Rose", "FF9CB8"), ("Indigo", "A7A0FF") };
+        var foreground = Choice(colors); SelectChoice(foreground, item.Color);
+        var background = Choice(colors); SelectChoice(background, item.BackgroundColor);
+        var foregroundHex = new TextBox { Header = "Text color (#RRGGBB)", Text = "#" + item.Color };
+        var backgroundHex = new TextBox { Header = "Background color (#RRGGBB)", Text = "#" + item.BackgroundColor };
+        foreground.SelectionChanged += (_, _) => foregroundHex.Text = "#" + ChoiceValue(foreground);
+        background.SelectionChanged += (_, _) => backgroundHex.Text = "#" + ChoiceValue(background);
+        var opacity = new NumberBox { Header = "Background opacity (%)", Minimum = 0, Maximum = 100, Value = item.BackgroundOpacity * 100, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+        var shadow = new CheckBox { Content = "Shadow", IsChecked = item.Shadow };
+        var outline = new CheckBox { Content = "Outline", IsChecked = item.Outline };
+        var contents = new StackPanel { Spacing = 9, Children =
+        {
+            text, start, duration, new TextBlock { Text = "Placement" }, preset,
+            new TextBlock { Text = "Font" }, font, size,
+            new TextBlock { Text = "Text color" }, foreground, foregroundHex,
+            new TextBlock { Text = "Background color" }, background, backgroundHex, opacity, shadow, outline
+        } };
+        var dialog = new ContentDialog { Title = adding ? "Add title" : "Edit title", Content = new ScrollViewer { Content = contents, MaxHeight = 510 },
+            PrimaryButtonText = "Save", CloseButtonText = "Cancel", XamlRoot = Content.XamlRoot };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return false;
+        if (double.IsNaN(start.Value) || double.IsNaN(duration.Value) || double.IsNaN(size.Value) || double.IsNaN(opacity.Value)) return false;
+        var titleColor = foregroundHex.Text.Trim().TrimStart('#');
+        var backgroundColor = backgroundHex.Text.Trim().TrimStart('#');
+        if (titleColor.Length != 6 || backgroundColor.Length != 6 || !titleColor.All(Uri.IsHexDigit) || !backgroundColor.All(Uri.IsHexDigit))
+        { await MessageAsync("Invalid color", "Enter a six-digit hex color for text and background."); return false; }
+        item.Text = text.Text;
+        item.Start = Math.Clamp(start.Value, 0, TimelineDuration());
+        item.Duration = Math.Clamp(duration.Value, .1, Math.Max(.1, TimelineDuration() - item.Start));
+        item.Preset = Enum.Parse<TitlePreset>(ChoiceValue(preset));
+        item.Font = ChoiceValue(font);
+        item.FontSize = (int)Math.Clamp(size.Value, 16, 160);
+        item.Color = titleColor.ToUpperInvariant(); item.BackgroundColor = backgroundColor.ToUpperInvariant();
+        item.BackgroundOpacity = Math.Clamp(opacity.Value / 100, 0, 1);
+        item.Shadow = shadow.IsChecked == true; item.Outline = outline.IsChecked == true;
+        RefreshTracks(); RefreshInspector(); InvalidateTimelinePreview();
+        return true;
+    }
+
+    private async void AddMusic_Click(object sender, RoutedEventArgs e)
+    {
+        if (_project.Clips.Count == 0) { await MessageAsync("Add video first", "Music needs a timeline to play under."); return; }
+        var picker = new FileOpenPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, Hwnd);
+        foreach (var ext in new[] { ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".wma" }) picker.FileTypeFilter.Add(ext);
+        var file = await picker.PickSingleFileAsync();
+        if (file is null) return;
+        try
+        {
+            var length = await MediaEngine.ProbeAudioDurationAsync(file.Path);
+            var item = new MusicClip { Path = file.Path, Out = Math.Min(length, TimelineDuration()) };
+            if (!await EditMusicAsync(item, true)) return;
+            _project.Music.Add(item);
+            SelectMusic(_project.Music.Count - 1);
+            InvalidateTimelinePreview();
+        }
+        catch (Exception ex) { await ErrorAsync("Could not add music", ex); }
+    }
+
+    private async Task<bool> EditMusicAsync(MusicClip item, bool adding = false)
+    {
+        var sourceDuration = await MediaEngine.ProbeAudioDurationAsync(item.Path);
+        var start = new NumberBox { Header = "Start on timeline (seconds)", Minimum = 0, Maximum = Math.Max(0, TimelineDuration() - .1), Value = item.Start, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+        var trimIn = new NumberBox { Header = "Music from (seconds)", Minimum = 0, Maximum = sourceDuration, Value = item.In, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+        var trimOut = new NumberBox { Header = "Music to (seconds)", Minimum = 0, Maximum = sourceDuration, Value = item.Out, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+        var volume = new NumberBox { Header = "Volume (%)", Minimum = 0, Maximum = 400, Value = item.Volume * 100, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+        var fade = new CheckBox { Content = "Fade out at end of music", IsChecked = item.FadeOut };
+        var fadeDuration = new NumberBox { Header = "Fade duration (seconds)", Minimum = .05, Maximum = 30, Value = item.FadeOutDuration, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+        var contents = new StackPanel { Spacing = 9, Children = { new TextBlock { Text = System.IO.Path.GetFileName(item.Path) }, start, trimIn, trimOut, volume, fade, fadeDuration } };
+        var dialog = new ContentDialog { Title = adding ? "Add background music" : "Edit background music", Content = contents,
+            PrimaryButtonText = "Save", CloseButtonText = "Cancel", XamlRoot = Content.XamlRoot };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return false;
+        if (double.IsNaN(start.Value) || double.IsNaN(trimIn.Value) || double.IsNaN(trimOut.Value) || double.IsNaN(volume.Value) || double.IsNaN(fadeDuration.Value)) return false;
+        if (trimOut.Value - trimIn.Value < .08) { await MessageAsync("Music range too short", "Choose at least 0.08 seconds of audio."); return false; }
+        item.Start = Math.Clamp(start.Value, 0, Math.Max(0, TimelineDuration() - .1));
+        item.In = Math.Clamp(trimIn.Value, 0, sourceDuration);
+        item.Out = Math.Clamp(trimOut.Value, item.In + .08, sourceDuration);
+        item.Volume = Math.Clamp(volume.Value / 100, 0, 4);
+        item.FadeOut = fade.IsChecked == true;
+        item.FadeOutDuration = Math.Clamp(fadeDuration.Value, .05, 30);
+        RefreshTracks(); InvalidateTimelinePreview();
+        return true;
     }
 
     private void AddBoundarySlot(int index)
@@ -558,6 +845,8 @@ public sealed partial class MainWindow : Window
         _pendingTimelinePlay = false;
         _selectedBoundary = index;
         _selectedClip = -1;
+        _selectedClips.Clear(); _selectedTitle = -1; _selectedMusic = -1;
+        _timelineFocused = true; _spaceSourcePlaying = false;
         _boundarySelected = true;
         RefreshTimeline();
         RefreshInspector();
@@ -599,6 +888,14 @@ public sealed partial class MainWindow : Window
     private void ApplyTransition(TransitionKind kind)
     {
         if (_project.Clips.Count == 0) return;
+        if (_selectedClips.Count > 1 && !_boundarySelected)
+        {
+            foreach (var index in _selectedClips.Where(x => x > 0 && x < _project.Clips.Count))
+                _project.Clips[index].TransitionIn = kind;
+            RefreshTimeline(); RefreshInspector(); InvalidateTimelinePreview();
+            Status.Text = $"Applied {TransitionName(kind)} to selected incoming boundaries.";
+            return;
+        }
         if (_selectedBoundary < 0 || _selectedBoundary > _project.Clips.Count)
             _selectedBoundary = _selectedClip > 0 ? _selectedClip : Math.Min(1, _project.Clips.Count);
         _boundarySelected = true;
@@ -614,13 +911,22 @@ public sealed partial class MainWindow : Window
 
     private void RefreshBoundaryControls()
     {
+        var multiple = _selectedClips.Count > 1 && !_boundarySelected;
         var valid = _selectedBoundary >= 0 && _selectedBoundary <= _project.Clips.Count && _project.Clips.Count > 0;
-        TransitionCombo.IsEnabled = valid;
-        BoundaryLabel.Text = !valid ? "Click a + between clips" :
+        TransitionCombo.IsEnabled = valid || multiple;
+        BoundaryLabel.Text = multiple ? $"{_selectedClips.Count} clips" : !valid ? "Click a + between clips" :
             _selectedBoundary == 0 ? "Start" : _selectedBoundary == _project.Clips.Count ? "End" : $"Before clip {_selectedBoundary + 1}";
         _loadingControls = true;
         TransitionCombo.Items.Clear();
-        if (valid)
+        if (multiple)
+        {
+            foreach (var kind in Enum.GetValues<TransitionKind>()) TransitionCombo.Items.Add(TransitionItem(kind, TransitionName(kind)));
+            var first = _selectedClips.Where(x => x > 0).Order().FirstOrDefault();
+            TransitionCombo.SelectedIndex = (int)_project.Clips[first].TransitionIn;
+            TransitionSeconds.Value = _project.Clips[first].TransitionDuration;
+            TransitionSeconds.IsEnabled = true;
+        }
+        else if (valid)
         {
             var edge = _selectedBoundary == 0 || _selectedBoundary == _project.Clips.Count;
             var clip = _selectedBoundary == 0 ? _project.Clips[0] :
@@ -647,8 +953,15 @@ public sealed partial class MainWindow : Window
 
     private void TransitionSeconds_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs e)
     {
-        if (_loadingControls || _selectedBoundary < 0 || _project.Clips.Count == 0 || double.IsNaN(e.NewValue)) return;
+        if (_loadingControls || _project.Clips.Count == 0 || double.IsNaN(e.NewValue)) return;
         var value = Math.Clamp(e.NewValue, .05, 10);
+        if (_selectedClips.Count > 1 && !_boundarySelected)
+        {
+            foreach (var index in _selectedClips.Where(x => x > 0 && x < _project.Clips.Count))
+                _project.Clips[index].TransitionDuration = value;
+            RefreshTimeline(); InvalidateTimelinePreview(); return;
+        }
+        if (_selectedBoundary < 0) return;
         if (_selectedBoundary == 0) _project.Clips[0].FadeInDuration = value;
         else if (_selectedBoundary == _project.Clips.Count) _project.Clips[^1].FadeOutDuration = value;
         else _project.Clips[_selectedBoundary].TransitionDuration = value;
@@ -670,7 +983,25 @@ public sealed partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private async void Timeline_Drop(object sender, DragEventArgs e) => await DropAtAsync(e, _project.Clips.Count);
+    private async void Timeline_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        await DropAtAsync(e, TimelineInsertionIndex(e));
+    }
+
+    private int TimelineInsertionIndex(DragEventArgs e)
+    {
+        var x = e.GetPosition(TimelineList).X;
+        var left = 0d;
+        for (var i = 0; i < TimelineList.Children.Count; i++)
+        {
+            var child = TimelineList.Children[i] as FrameworkElement;
+            var width = child?.ActualWidth ?? 0;
+            if (x < left + width / 2) return Math.Min(i / 2, _project.Clips.Count);
+            left += width + TimelineList.Spacing;
+        }
+        return _project.Clips.Count;
+    }
 
     private async Task DropAtAsync(DragEventArgs e, int index)
     {
@@ -704,17 +1035,27 @@ public sealed partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void SelectClip(int index)
+    private static bool ControlDown() =>
+        Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(CoreVirtualKeyStates.Down);
+
+    private void SelectClip(int index, bool additive = false)
     {
         if (index < 0 || index >= _project.Clips.Count) return;
-        _selectedClip = index;
+        if (additive)
+        {
+            if (!_selectedClips.Add(index)) _selectedClips.Remove(index);
+            _selectedClip = _selectedClips.Contains(index) ? index : _selectedClips.DefaultIfEmpty(-1).Last();
+        }
+        else { _selectedClips.Clear(); _selectedClips.Add(index); _selectedClip = index; }
+        _selectedTitle = -1; _selectedMusic = -1;
+        _timelineFocused = true; _spaceSourcePlaying = false;
         _boundarySelected = false;
+        _selectedBoundary = index;
         _previewPlayback = false;
         _pendingTimelinePlay = false;
         _player.Pause();
-        var clip = _project.Clips[index];
-        LoadPreview(clip.SourcePath, clip.In);
-        PreviewMode.Text = $"Timeline · clip {index + 1}";
+        if (SelectedClip is { } clip) LoadPreview(clip.SourcePath, clip.In);
+        PreviewMode.Text = _selectedClips.Count > 1 ? $"Timeline · {_selectedClips.Count} clips selected" : $"Timeline · clip {index + 1}";
         RefreshAssets();
         RefreshTimeline();
         RefreshInspector();
@@ -737,37 +1078,48 @@ public sealed partial class MainWindow : Window
             NormalizeBox.IsChecked = clip?.Normalize ?? false;
             FadeInBox.IsChecked = clip?.FadeIn ?? false;
             FadeOutBox.IsChecked = clip?.FadeOut ?? false;
-            TitleOverlay.Visibility = clip is { TitlePreset: not TitlePreset.None } ? Visibility.Visible : Visibility.Collapsed;
-            TitleOverlay.Text = clip?.Title ?? "";
-            TitleOverlay.VerticalAlignment = clip?.TitlePreset == TitlePreset.LowerThird ? VerticalAlignment.Bottom : VerticalAlignment.Center;
-            TitleOverlay.Margin = clip?.TitlePreset == TitlePreset.LowerThird ? new Thickness(0, 0, 0, 40) : new Thickness(0);
+            var trackTitle = _selectedTitle >= 0 && _selectedTitle < _project.Titles.Count ? _project.Titles[_selectedTitle] : null;
+            TitleOverlay.Visibility = trackTitle is not null || clip is { TitlePreset: not TitlePreset.None } ? Visibility.Visible : Visibility.Collapsed;
+            TitleOverlay.Text = trackTitle?.Text ?? clip?.Title ?? "";
+            var lower = trackTitle?.Preset == TitlePreset.LowerThird || trackTitle is null && clip?.TitlePreset == TitlePreset.LowerThird;
+            TitleOverlay.VerticalAlignment = lower ? VerticalAlignment.Bottom : VerticalAlignment.Center;
+            TitleOverlay.Margin = lower ? new Thickness(0, 0, 0, 40) : new Thickness(0);
+            TitleOverlay.FontFamily = new FontFamily(trackTitle?.Font ?? "Segoe UI");
+            TitleOverlay.FontSize = trackTitle is null ? 27 : Math.Clamp(trackTitle.FontSize * .55, 16, 65);
+            TitleOverlay.Foreground = Brush("#" + (trackTitle?.Color ?? "FFFFFF"));
+            TitleOverlay.Background = trackTitle is null ? Brush("#99000000") :
+                Brush($"#{(int)(Math.Clamp(trackTitle.BackgroundOpacity, 0, 1) * 255):X2}{trackTitle.BackgroundColor}");
         }
         finally { _loadingControls = false; }
     }
 
     private TimelineClip? SelectedClip => _selectedClip >= 0 && _selectedClip < _project.Clips.Count ? _project.Clips[_selectedClip] : null;
+    private IEnumerable<TimelineClip> SelectedClips => _selectedClips.Where(x => x >= 0 && x < _project.Clips.Count).Select(x => _project.Clips[x]);
 
     private async void Speed_Click(object sender, RoutedEventArgs e)
     {
         if (SelectedClip is not { } clip) return;
-        var original = Math.Max(0, clip.Out - clip.In);
+        var original = SelectedClips.Sum(x => Math.Max(0, x.Out - x.In));
         var percent = new NumberBox { Header = "Speed percentage", Minimum = 25, Maximum = 400,
             SmallChange = 5, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
             Value = clip.Speed * 100, Width = 180 };
-        var newLength = new TextBlock { Text = $"New clip length: {PreciseTime(clip.Duration)}" };
+        var newLength = new TextBlock { Text = $"New total length: {PreciseTime(SelectedClips.Sum(x => x.Duration))}" };
         percent.ValueChanged += (_, args) =>
         {
             if (!double.IsNaN(args.NewValue) && args.NewValue > 0)
-                newLength.Text = $"New clip length: {PreciseTime(original / (args.NewValue / 100))}";
+                newLength.Text = $"New total length: {PreciseTime(original / (args.NewValue / 100))}";
         };
         var pitch = new CheckBox { Content = "Keep audio pitch", IsChecked = clip.KeepPitch };
         var stack = new StackPanel { Spacing = 10, Children =
-            { percent, new TextBlock { Text = $"Original clip length: {PreciseTime(original)}" }, newLength, pitch } };
-        var dialog = new ContentDialog { Title = "Clip speed", Content = stack,
+            { percent, new TextBlock { Text = $"Original total length: {PreciseTime(original)}" }, newLength, pitch } };
+        var dialog = new ContentDialog { Title = _selectedClips.Count > 1 ? $"Speed · {_selectedClips.Count} clips" : "Clip speed", Content = stack,
             PrimaryButtonText = "Apply", CloseButtonText = "Cancel", XamlRoot = Content.XamlRoot };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary || double.IsNaN(percent.Value)) return;
-        clip.Speed = Math.Clamp(percent.Value / 100, .25, 4);
-        clip.KeepPitch = pitch.IsChecked == true;
+        foreach (var selected in SelectedClips)
+        {
+            selected.Speed = Math.Clamp(percent.Value / 100, .25, 4);
+            selected.KeepPitch = pitch.IsChecked == true;
+        }
         _player.PlaybackSession.PlaybackRate = clip.Speed;
         RefreshInspector();
         RefreshTimeline();
@@ -781,11 +1133,14 @@ public sealed partial class MainWindow : Window
     private void UpdateClip()
     {
         if (_loadingControls || SelectedClip is not { } clip) return;
-        clip.TitlePreset = (TitlePreset)Math.Max(0, TitleBox.SelectedIndex);
-        clip.Volume = VolumeSlider.Value;
-        clip.Normalize = NormalizeBox.IsChecked == true;
-        clip.FadeIn = FadeInBox.IsChecked == true;
-        clip.FadeOut = FadeOutBox.IsChecked == true;
+        foreach (var selected in SelectedClips)
+        {
+            selected.TitlePreset = (TitlePreset)Math.Max(0, TitleBox.SelectedIndex);
+            selected.Volume = VolumeSlider.Value;
+            selected.Normalize = NormalizeBox.IsChecked == true;
+            selected.FadeIn = FadeInBox.IsChecked == true;
+            selected.FadeOut = FadeOutBox.IsChecked == true;
+        }
         _player.PlaybackSession.PlaybackRate = clip.Speed;
         _player.Volume = Math.Min(1, clip.Volume);
         TitleOverlay.Visibility = clip.TitlePreset == TitlePreset.None ? Visibility.Collapsed : Visibility.Visible;
@@ -812,6 +1167,12 @@ public sealed partial class MainWindow : Window
 
     private void TitleOverlay_TextChanged(object sender, TextChangedEventArgs e)
     {
+        if (_loadingControls) return;
+        if (_selectedTitle >= 0 && _selectedTitle < _project.Titles.Count)
+        {
+            _project.Titles[_selectedTitle].Text = TitleOverlay.Text;
+            RefreshTracks(); InvalidateTimelinePreview(); return;
+        }
         if (_loadingControls || SelectedClip is not { } clip) return;
         clip.Title = TitleOverlay.Text;
         InvalidateTimelinePreview();
@@ -824,6 +1185,7 @@ public sealed partial class MainWindow : Window
         var other = _selectedClip + direction;
         if (_selectedClip < 0 || other < 0 || other >= _project.Clips.Count) return;
         (_project.Clips[_selectedClip], _project.Clips[other]) = (_project.Clips[other], _project.Clips[_selectedClip]);
+        _selectedClips.Clear(); _selectedClips.Add(other);
         _selectedClip = other;
         RefreshTimeline();
         RefreshInspector();
@@ -834,9 +1196,12 @@ public sealed partial class MainWindow : Window
 
     private void RemoveSelectedClip()
     {
-        if (_selectedClip < 0 || _selectedClip >= _project.Clips.Count) return;
-        _project.Clips.RemoveAt(_selectedClip);
-        _selectedClip = Math.Min(_selectedClip, _project.Clips.Count - 1);
+        if (_selectedClips.Count == 0) return;
+        var first = _selectedClips.Min();
+        foreach (var index in _selectedClips.OrderDescending())
+            if (index >= 0 && index < _project.Clips.Count) _project.Clips.RemoveAt(index);
+        _selectedClips.Clear();
+        _selectedClip = Math.Min(first, _project.Clips.Count - 1);
         _boundarySelected = false;
         _selectedBoundary = Math.Min(_selectedBoundary, _project.Clips.Count);
         if (_selectedClip >= 0) SelectClip(_selectedClip);
@@ -851,9 +1216,56 @@ public sealed partial class MainWindow : Window
 
     private void Editor_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (_exporting || e.Key != VirtualKey.Delete) return;
+        if (_exporting) return;
         var focused = FocusManager.GetFocusedElement(Content.XamlRoot);
         if (focused is TextBox or NumberBox or PasswordBox) return;
+        if (e.Key == VirtualKey.A && ControlDown() && _timelineFocused && _project.Clips.Count > 0)
+        {
+            _selectedClips.Clear();
+            foreach (var index in Enumerable.Range(0, _project.Clips.Count)) _selectedClips.Add(index);
+            _selectedClip = 0; _selectedTitle = -1; _selectedMusic = -1; _boundarySelected = false;
+            RefreshTimeline(); RefreshInspector();
+            Status.Text = $"Selected all {_project.Clips.Count} clips.";
+            e.Handled = true; return;
+        }
+        if (e.Key == VirtualKey.Space && focused is not ComboBox)
+        {
+            if (_spaceSourcePlaying)
+            {
+                _player.Pause(); _spaceSourcePlaying = false;
+                UpdatePlaybackButton(); e.Handled = true; return;
+            }
+            if (_hoveredAsset is { } asset)
+            {
+                _previewPlayback = false;
+                _spaceSourcePlaying = true;
+                LoadPreview(asset.Path, _hoveredTime);
+                _player.PlaybackSession.PlaybackRate = 1;
+                _player.Volume = 1;
+                _player.Play();
+                PreviewMode.Text = $"Media · {asset.Name}";
+                UpdatePlaybackButton(); e.Handled = true; return;
+            }
+            if (_timelineFocused && _project.Clips.Count > 0)
+            {
+                if (_selectedClips.Count == 0 && !_boundarySelected) SelectClip(0);
+                Play_Click(sender, new RoutedEventArgs());
+                e.Handled = true; return;
+            }
+        }
+        if (e.Key != VirtualKey.Delete) return;
+        if (_selectedTitle >= 0 && _selectedTitle < _project.Titles.Count)
+        {
+            _project.Titles.RemoveAt(_selectedTitle); _selectedTitle = -1;
+            RefreshTracks(); RefreshInspector(); InvalidateTimelinePreview();
+            Status.Text = "Title removed."; e.Handled = true; return;
+        }
+        if (_selectedMusic >= 0 && _selectedMusic < _project.Music.Count)
+        {
+            _project.Music.RemoveAt(_selectedMusic); _selectedMusic = -1;
+            RefreshTracks(); InvalidateTimelinePreview();
+            Status.Text = "Music removed."; e.Handled = true; return;
+        }
         if (_boundarySelected && _selectedBoundary >= 0 && _selectedBoundary <= _project.Clips.Count && _project.Clips.Count > 0)
         {
             if (_selectedBoundary == 0) _project.Clips[0].FadeIn = false;
@@ -988,7 +1400,9 @@ public sealed partial class MainWindow : Window
         var clip = _project.Clips[index];
         var offset = _selectedClip >= 0 && _previewPath == clip.SourcePath ?
             Math.Clamp((_player.PlaybackSession.Position.TotalSeconds - clip.In) / Math.Max(.01, clip.Speed), 0, clip.Duration) : 0;
-        var position = Math.Min(TimelineDuration(), TimelineClipStart(index) + offset);
+        var position = _selectedTitle >= 0 && _selectedTitle < _project.Titles.Count ? _project.Titles[_selectedTitle].Start :
+            _selectedMusic >= 0 && _selectedMusic < _project.Music.Count ? _project.Music[_selectedMusic].Start :
+            Math.Min(TimelineDuration(), TimelineClipStart(index) + offset);
         LoadPreview(_timelinePreviewPath, position);
         PreviewSeek.Maximum = Math.Max(.1, TimelineDuration());
         _player.PlaybackSession.PlaybackRate = 1;
@@ -1023,11 +1437,12 @@ public sealed partial class MainWindow : Window
 
     private void Play_Click(object sender, RoutedEventArgs e)
     {
-        if (_player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing)
+        if (_player.PlaybackSession.PlaybackState is MediaPlaybackState.Playing or MediaPlaybackState.Opening or MediaPlaybackState.Buffering)
         {
-            _player.Pause(); PlayButton.Content = "▶ Play"; return;
+            _player.Pause(); _spaceSourcePlaying = false; PlayButton.Content = "▶ Play"; return;
         }
-        if (_project.Clips.Count > 0 && (SelectedClip is not null || _boundarySelected))
+        if (_project.Clips.Count > 0 && _timelineFocused &&
+            (SelectedClip is not null || _boundarySelected || _selectedTitle >= 0 || _selectedMusic >= 0))
         {
             if (_previewPlayback && _timelinePreviewPath == _previewPath)
             {
@@ -1064,13 +1479,20 @@ public sealed partial class MainWindow : Window
         PreviewSeek.Value = Math.Clamp(seconds, 0, PreviewSeek.Maximum);
         _seeking = false;
         PreviewTime.Text = Time(seconds);
+        UpdatePlaybackButton();
         if (_player.PlaybackSession.PlaybackState != MediaPlaybackState.Playing)
         {
-            if (!_pendingTimelinePlay) PlayButton.Content = "▶ Play";
             if (_previewPlayback && seconds >= PreviewSeek.Maximum - .05)
                 _previewPlayback = false;
             return;
         }
+    }
+
+    private void UpdatePlaybackButton()
+    {
+        if (_pendingTimelinePlay) { PlayButton.Content = "… Waiting"; return; }
+        PlayButton.Content = _player.PlaybackSession.PlaybackState is MediaPlaybackState.Playing or MediaPlaybackState.Opening or MediaPlaybackState.Buffering
+            ? "⏸ Pause" : "▶ Play";
     }
 
     private async Task ErrorAsync(string title, Exception error)

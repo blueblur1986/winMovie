@@ -31,6 +31,19 @@ public static class MediaEngine
             HasAudio = streams.Any(x => x.GetProperty("codec_type").GetString() == "audio") };
     }
 
+    public static async Task<double> ProbeAudioDurationAsync(string path)
+    {
+        var result = await RunAsync("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", path]);
+        if (result.ExitCode != 0) throw new InvalidOperationException(result.Error);
+        using var json = JsonDocument.Parse(result.Output);
+        if (!json.RootElement.GetProperty("streams").EnumerateArray().Any(x => x.GetProperty("codec_type").GetString() == "audio"))
+            throw new InvalidOperationException("This file has no audio stream.");
+        var value = json.RootElement.GetProperty("format").GetProperty("duration").GetString();
+        if (!double.TryParse(value, NumberStyles.Float, C, out var duration) || duration <= 0)
+            throw new InvalidOperationException("Could not read the audio duration.");
+        return duration;
+    }
+
     public static async Task<string> ThumbnailAsync(string path, double time, string directory)
     {
         Directory.CreateDirectory(directory);
@@ -124,7 +137,7 @@ public static class MediaEngine
                 progress(.8 * (i + 1d) / project.Clips.Count, $"Preparing clip {i + 1} of {project.Clips.Count}");
             }
             progress(.82, "Encoding final video");
-            await JoinAsync(project.Clips, segments, output, settings, cancellationToken);
+            await JoinAsync(project, segments, output, temp, settings, cancellationToken);
             progress(1, "Export complete");
         }
         finally
@@ -183,11 +196,16 @@ public static class MediaEngine
         if (result.ExitCode != 0) throw new InvalidOperationException("Could not prepare clip: " + result.Error);
     }
 
-    private static async Task JoinAsync(IReadOnlyList<TimelineClip> clips, IReadOnlyList<string> segments,
-        string output, ExportSettings settings, CancellationToken token)
+    private static async Task JoinAsync(MovieProject project, IReadOnlyList<string> segments,
+        string output, string temp, ExportSettings settings, CancellationToken token)
     {
+        var clips = project.Clips;
         var args = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
         foreach (var segment in segments) args.AddRange(["-i", segment]);
+        if (project.Music.Any(x => x.Duration >= .08 && !File.Exists(x.Path)))
+            throw new FileNotFoundException("A background music file is missing.");
+        var music = project.Music.Where(x => x.Duration >= .08).ToList();
+        foreach (var track in music) args.AddRange(["-ss", F(track.In), "-t", F(track.Duration), "-i", track.Path]);
         string video = "[0:v]", audio = "[0:a]";
         var total = clips[0].Duration;
         var graph = new StringBuilder();
@@ -221,9 +239,58 @@ public static class MediaEngine
             audio = nextA;
             total += clips[i].Duration - overlap;
         }
-        if (clips.Count > 1) args.AddRange(["-filter_complex", graph.ToString().TrimEnd(';')]);
-        args.AddRange(["-map", clips.Count == 1 ? "0:v" : video,
-            "-map", clips.Count == 1 ? "0:a" : audio, "-c:v", EncoderName(settings.Encoder)]);
+        var titleIndex = 0;
+        foreach (var title in project.Titles.Where(x => x.Duration > .05 && !string.IsNullOrWhiteSpace(x.Text)))
+        {
+            var start = Math.Clamp(title.Start, 0, total);
+            var end = Math.Clamp(title.Start + title.Duration, start, total);
+            if (end <= start) continue;
+            var textPath = System.IO.Path.Combine(temp, $"title-{titleIndex}.txt");
+            await File.WriteAllTextAsync(textPath, title.Text, new UTF8Encoding(false), token);
+            var fontFile = title.Font switch
+            {
+                "Arial" => "arial.ttf", "Georgia" => "georgia.ttf", "Consolas" => "consola.ttf",
+                "Times New Roman" => "times.ttf", _ => "segoeui.ttf"
+            };
+            var fontPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts", fontFile);
+            var area = title.Preset == TitlePreset.LowerThird ?
+                ((int)(settings.Height * .72), (int)(settings.Height * .28), "h*0.79") :
+                title.Preset == TitlePreset.Opening ?
+                (0, settings.Height, "(h-text_h)/2") :
+                ((int)(settings.Height * .35), (int)(settings.Height * .30), "(h-text_h)/2");
+            var enable = $"between(t,{F(start)},{F(end)})";
+            var background = SafeColor(title.BackgroundColor);
+            var foreground = SafeColor(title.Color);
+            var opacity = Math.Clamp(title.BackgroundOpacity, 0, 1);
+            if (opacity > .001)
+            {
+                graph.Append($"{video}drawbox=x=0:y={area.Item1}:w=iw:h={area.Item2}:color=0x{background}@{F(opacity)}:t=fill:enable='{enable}'[tb{titleIndex}];");
+                video = $"[tb{titleIndex}]";
+            }
+            var size = Math.Max(12, (int)Math.Round(Math.Clamp(title.FontSize, 16, 160) * settings.Height / 1080d));
+            var shadow = title.Shadow ? ":shadowcolor=black@0.9:shadowx=2:shadowy=2" : "";
+            var outline = title.Outline ? ":borderw=2:bordercolor=black" : "";
+            graph.Append($"{video}drawtext=fontfile='{FilterPath(fontPath)}':textfile='{FilterPath(textPath)}':fontsize={size}:fontcolor=0x{foreground}:x=(w-text_w)/2:y={area.Item3}{shadow}{outline}:enable='{enable}'[t{titleIndex}];");
+            video = $"[t{titleIndex}]";
+            titleIndex++;
+        }
+        for (var i = 0; i < music.Count; i++)
+        {
+            var track = music[i];
+            var duration = Math.Min(track.Duration, Math.Max(0, total - track.Start));
+            if (duration <= .05) continue;
+            var fade = Math.Min(Math.Clamp(track.FadeOutDuration, .05, 30), duration);
+            var musicFilter = $"[{segments.Count + i}:a]aresample=48000,atrim=duration={F(duration)},asetpts=PTS-STARTPTS,volume={F(Math.Clamp(track.Volume, 0, 4))}";
+            if (track.FadeOut) musicFilter += $",afade=t=out:st={F(duration - fade)}:d={F(fade)}";
+            var delay = (int)Math.Round(Math.Max(0, track.Start) * 1000);
+            musicFilter += $",adelay={delay}|{delay}[music{i}]";
+            graph.Append(musicFilter + ";");
+            graph.Append($"{audio}[music{i}]amix=inputs=2:duration=first:dropout_transition=0[mix{i}];");
+            audio = $"[mix{i}]";
+        }
+        if (graph.Length > 0) args.AddRange(["-filter_complex", graph.ToString().TrimEnd(';')]);
+        args.AddRange(["-map", video.StartsWith("[0:") ? video.Trim('[', ']') : video,
+            "-map", audio.StartsWith("[0:") ? audio.Trim('[', ']') : audio, "-c:v", EncoderName(settings.Encoder)]);
         if (settings.Encoder == "Software (H.264)") args.AddRange(["-preset", settings.Preview ? "ultrafast" : "medium", "-crf", settings.Preview ? "30" : "20"]);
         else if (settings.Encoder == "NVIDIA NVENC") args.AddRange(["-preset", "p4", "-cq", "22"]);
         else args.AddRange(["-b:v", "8M"]);
@@ -232,11 +299,13 @@ public static class MediaEngine
         if (result.ExitCode != 0 && settings.Encoder != "Software (H.264)")
         {
             // An encoder may be compiled into FFmpeg without a usable device or driver.
-            await JoinAsync(clips, segments, output, settings with { Encoder = "Software (H.264)" }, token);
+            await JoinAsync(project, segments, output, temp, settings with { Encoder = "Software (H.264)" }, token);
             return;
         }
         if (result.ExitCode != 0) throw new InvalidOperationException("MP4 export failed: " + result.Error);
     }
+
+    private static string SafeColor(string? color) => color is { Length: 6 } && color.All(Uri.IsHexDigit) ? color : "FFFFFF";
 
     private static string EncoderName(string selection) => selection switch
     {

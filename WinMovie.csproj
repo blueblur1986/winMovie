@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>WinMovie</RootNamespace>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <Platforms>x64</Platforms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
+    <Compile Remove="tests\**\*.cs" />
+  </ItemGroup>
+  <!-- Windows App SDK's unpackaged publish path generates this PRI but omits it from publish. -->
+  <Target Name="IncludeAppPriInPublish"
+          BeforeTargets="ComputeResolvedFilesToPublishList"
+          DependsOnTargets="$(GenerateProjectPriFile)">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(ProjectPriFullPath)"
+                             Condition="Exists('$(ProjectPriFullPath)')">
+        <RelativePath>$(ProjectPriFileName)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+  <Target Name="VerifyAppPriInPublish" AfterTargets="Publish">
+    <Error Condition="!Exists('$(PublishDir)$(ProjectPriFileName)')"
+           Text="The WinUI resource index is missing from the publish folder: $(ProjectPriFileName)" />
+  </Target>
+</Project>

@@ -1,0 +1,144 @@
+<Window
+    x:Class="WinMovie.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:media="using:Microsoft.UI.Xaml.Controls">
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" RowSpacing="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="350" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Padding="18,12" ColumnSpacing="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="WinMovie" FontSize="21" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,18,0" />
+            <Button Grid.Column="1" Content="Import media" Click="Import_Click" />
+            <Button Grid.Column="2" Content="New" Click="New_Click" />
+            <Button Grid.Column="3" Content="Open project" Click="Open_Click" />
+            <Button Grid.Column="5" Content="Save project" Click="Save_Click" />
+            <Button x:Name="ExportButton" Grid.Column="6" Content="Export MP4" Style="{StaticResource AccentButtonStyle}" Click="Export_Click" />
+        </Grid>
+
+        <Grid Grid.Row="1" Padding="18,16" ColumnSpacing="18">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" MinWidth="320" />
+                <ColumnDefinition Width="3*" MinWidth="420" />
+            </Grid.ColumnDefinitions>
+
+            <Grid Grid.Column="0" RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid>
+                    <TextBlock Text="Media" FontSize="17" FontWeight="SemiBold" />
+                    <TextBlock x:Name="MediaCount" HorizontalAlignment="Right" Opacity="0.7" />
+                </Grid>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="MediaList" Spacing="7" />
+                </ScrollViewer>
+                <TextBlock Grid.Row="2" Text="Skim and select directly on a media strip. Drag its selected range onto the timeline." TextWrapping="Wrap" FontSize="12" Opacity="0.7" />
+                <Grid Grid.Row="3" ColumnSpacing="10">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="RangeLabel" VerticalAlignment="Center" Text="Import a video to begin" />
+                    <Button Grid.Column="1" Content="Add range to timeline  →" Style="{StaticResource AccentButtonStyle}" Click="AddRange_Click" />
+                </Grid>
+            </Grid>
+
+            <Grid Grid.Column="1" RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid>
+                    <TextBlock Text="Preview" FontSize="17" FontWeight="SemiBold" />
+                    <TextBlock x:Name="PreviewMode" HorizontalAlignment="Right" Opacity="0.7" />
+                </Grid>
+                <Grid Grid.Row="1" Background="#090B0D" MinHeight="250">
+                    <media:MediaPlayerElement x:Name="Preview" AreTransportControlsEnabled="False" Stretch="Uniform" />
+                    <TextBox x:Name="TitleOverlay" Visibility="Collapsed" TextChanged="TitleOverlay_TextChanged"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" Width="420"
+                             FontSize="27" FontWeight="SemiBold" TextAlignment="Center"
+                             PlaceholderText="Click to edit title" Background="#99000000" BorderThickness="0" />
+                </Grid>
+                <Grid Grid.Row="2" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="PlayButton" Content="▶ Play" Click="Play_Click" />
+                    <Slider x:Name="PreviewSeek" Grid.Column="1" Minimum="0" Maximum="100" ValueChanged="PreviewSeek_ValueChanged" />
+                    <TextBlock x:Name="PreviewTime" Grid.Column="2" Text="0:00" VerticalAlignment="Center" />
+                </Grid>
+                <TextBlock Grid.Row="3" Text="Click a timeline clip to edit it. Click its title in the preview to change the words." TextWrapping="Wrap" FontSize="12" Opacity="0.7" />
+            </Grid>
+        </Grid>
+
+        <Grid Grid.Row="2" Padding="18,12" RowSpacing="9" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="128" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid>
+                <TextBlock Text="Timeline" FontSize="17" FontWeight="SemiBold" />
+                <TextBlock x:Name="ProjectDuration" HorizontalAlignment="Right" Opacity="0.7" />
+            </Grid>
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                <TextBlock Text="Transitions" VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.7" />
+                <StackPanel x:Name="TransitionPalette" Orientation="Horizontal" Spacing="5" />
+                <TextBlock x:Name="BoundaryLabel" VerticalAlignment="Center" Margin="14,0,0,0" Opacity="0.7" />
+                <NumberBox x:Name="TransitionSeconds" Width="84" Header="Seconds" SpinButtonPlacementMode="Compact" Minimum="0.05" Maximum="10" SmallChange="0.1" ValueChanged="TransitionSeconds_ValueChanged" />
+            </StackPanel>
+            <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
+                <StackPanel x:Name="TimelineList" Orientation="Horizontal" Spacing="4" AllowDrop="True" DragOver="Timeline_DragOver" Drop="Timeline_Drop" />
+            </ScrollViewer>
+            <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
+                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <TextBlock Text="Clip" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Content="←" Click="MoveLeft_Click" ToolTipService.ToolTip="Move clip left" />
+                    <Button Content="→" Click="MoveRight_Click" ToolTipService.ToolTip="Move clip right" />
+                    <Button Content="Remove" Click="Remove_Click" />
+                    <TextBlock Text="Trim from" VerticalAlignment="Center" />
+                    <NumberBox x:Name="TrimInBox" Width="85" Minimum="0" SmallChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="Trim_ValueChanged" />
+                    <TextBlock Text="to" VerticalAlignment="Center" />
+                    <NumberBox x:Name="TrimOutBox" Width="85" Minimum="0" SmallChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="Trim_ValueChanged" />
+                    <CheckBox x:Name="FadeInBox" Content="Fade in" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed" />
+                    <CheckBox x:Name="FadeOutBox" Content="Fade out" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed" />
+                    <TextBlock Text="Title" VerticalAlignment="Center" />
+                    <ComboBox x:Name="TitleBox" Width="115" SelectionChanged="InspectorSelection_Changed">
+                        <ComboBoxItem Content="None" /><ComboBoxItem Content="Center" /><ComboBoxItem Content="Lower third" /><ComboBoxItem Content="Opening" />
+                    </ComboBox>
+                    <TextBlock Text="Speed" VerticalAlignment="Center" />
+                    <ComboBox x:Name="SpeedBox" Width="75" SelectionChanged="InspectorSelection_Changed">
+                        <ComboBoxItem Content="0.25×" /><ComboBoxItem Content="0.5×" /><ComboBoxItem Content="1×" /><ComboBoxItem Content="2×" /><ComboBoxItem Content="4×" />
+                    </ComboBox>
+                    <CheckBox x:Name="PitchBox" Content="Keep pitch" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed" />
+                    <TextBlock Text="Volume" VerticalAlignment="Center" />
+                    <Slider x:Name="VolumeSlider" Width="105" Minimum="0" Maximum="4" StepFrequency="0.05" ValueChanged="InspectorValue_Changed" />
+                    <CheckBox x:Name="NormalizeBox" Content="Normalize" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed" />
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <Grid Grid.Row="3" Padding="18,6" ColumnSpacing="12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBlock x:Name="Status" Text="Ready" Opacity="0.7" />
+            <ProgressBar x:Name="ExportProgress" Grid.Column="1" Width="180" Minimum="0" Maximum="1" Visibility="Collapsed" />
+        </Grid>
+    </Grid>
+</Window>

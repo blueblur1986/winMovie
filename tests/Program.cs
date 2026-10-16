@@ -12,6 +12,12 @@ try
         "-c:v", "libx264", "-c:a", "aac", "-shortest", source]);
     if (generated.ExitCode != 0) throw new Exception(generated.Error);
     var asset = await MediaEngine.ProbeAsync(source);
+    if (asset.Width != 640 || asset.Height != 360) throw new Exception("Source dimensions were not detected.");
+    var sizes = MediaEngine.ResolutionOptions(asset.Height);
+    if (sizes.Count != 1 || sizes[0].Width != 640 || sizes[0].Height != 360)
+        throw new Exception("Small sources must not be offered an upscaled export size.");
+    var detectedEncoder = await MediaEngine.DetectBestEncoderAsync();
+    Console.WriteLine($"Detected encoder: {detectedEncoder}");
     var project = new MovieProject { Assets = [asset], Clips =
     [
         new TimelineClip { SourcePath = source, In = 0, Out = 1.6, FadeIn = true,
@@ -28,12 +34,26 @@ try
         new TimelineClip { SourcePath = source, In = 0, Out = 1.5,
             TransitionIn = TransitionKind.SlideRight, TransitionDuration = .4, FadeOut = true, FadeOutDuration = .5 }
     ] };
-    await MediaEngine.ExportAsync(project, output, "Software (H.264)",
+    await MediaEngine.ExportAsync(project, output, new ExportSettings(640, 360, "Software (H.264)"),
         (fraction, message) => Console.WriteLine($"{fraction:P0} {message}"), CancellationToken.None);
     var result = await MediaEngine.ProbeAsync(output);
-    if (!File.Exists(output) || result.Duration < 5 || result.Duration > 8 || !result.HasAudio)
+    if (!File.Exists(output) || result.Duration < 5 || result.Duration > 8 || !result.HasAudio || result.Width != 640 || result.Height != 360)
         throw new Exception($"Invalid output: duration={result.Duration}, audio={result.HasAudio}");
     Console.WriteLine($"PASS: MP4 with video/audio, {result.Duration:0.00}s, {new FileInfo(output).Length:N0} bytes");
+    var preview = Path.Combine(root, "preview.mp4");
+    await MediaEngine.ExportAsync(new MovieProject { Assets = [asset], Clips = project.Clips.Take(2).ToList() },
+        preview, new ExportSettings(854, 480, "Software (H.264)", Preview: true), (_, _) => { }, CancellationToken.None);
+    var previewInfo = await MediaEngine.ProbeAsync(preview);
+    if (previewInfo.Width != 854 || previewInfo.Height != 480 || previewInfo.Duration < 2)
+        throw new Exception("Rendered timeline preview is invalid.");
+    Console.WriteLine("PASS: low-resolution timeline preview with transition");
+    var autoOutput = Path.Combine(root, "automatic-encoder.mp4");
+    await MediaEngine.ExportAsync(new MovieProject { Assets = [asset], Clips = project.Clips.Take(2).ToList() },
+        autoOutput, new ExportSettings(640, 360, detectedEncoder), (_, _) => { }, CancellationToken.None);
+    var autoInfo = await MediaEngine.ProbeAsync(autoOutput);
+    if (autoInfo.Width != 640 || autoInfo.Height != 360 || !autoInfo.HasAudio)
+        throw new Exception("Automatically selected encoder did not produce a valid MP4.");
+    Console.WriteLine("PASS: automatic encoder MP4 export");
 }
 finally
 {

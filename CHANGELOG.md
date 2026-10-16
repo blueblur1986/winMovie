@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.0-beta.3
+
+- Render a low-resolution timeline preview in the background so playback includes transitions, titles, speed, fades, and audio processing.
+- Drag the yellow source selection directly into the timeline; accept drops on clip cards as well as insertion boundaries.
+- Press Delete to remove a selected timeline clip or clear a selected transition.
+- Replace the transition shelf with an illustrated dropdown and the speed presets with a percentage dialog that compares clip durations.
+- Detect a working NVIDIA, Intel, or AMD encoder automatically; offer source-limited export sizes from 480p through 4K.
+- Show a modal export progress overlay with cancellation and add an original WinUI-style app icon.
+
 ## v1.0-beta.2
 
 - Put six-frame filmstrips inside the upper-left media bin, with skimming, yellow range selection, and adjustable range edges.

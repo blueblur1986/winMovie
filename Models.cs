@@ -7,6 +7,8 @@ public sealed class MediaAsset
     public string Path { get; set; } = "";
     public double Duration { get; set; }
     public bool HasAudio { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
     [JsonIgnore] public string? ThumbnailPath { get; set; }
     [JsonIgnore] public List<string> FilmstripFrames { get; set; } = [];
     [JsonIgnore] public string Name => System.IO.Path.GetFileName(Path);

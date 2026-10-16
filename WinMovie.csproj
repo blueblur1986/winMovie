@@ -4,7 +4,8 @@
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>WinMovie</RootNamespace>
-    <Version>1.0.0-beta.2</Version>
+    <Version>1.0.0-beta.3</Version>
+    <ApplicationIcon>Assets\WinMovie.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
@@ -15,6 +16,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
     <Compile Remove="tests\**\*.cs" />
+    <Content Include="Assets\WinMovie.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\WinMovie.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <!-- Windows App SDK's unpackaged publish path generates this PRI but omits it from publish. -->
   <Target Name="IncludeAppPriInPublish"

@@ -2,19 +2,20 @@
 
 A small, native WinUI 3 video editor built around the quick editing flow of iMovie '08–'11.
 
-Current preview: **v1.0-beta.2**. The next feature iteration will be beta 3; release candidates and the stable release will be named when the maintainer decides they are ready.
+Current preview: **v1.0-beta.3**. The next feature iteration will be beta 4; release candidates and the stable release will be named when the maintainer decides they are ready.
 
 ## What works
 
 - Import MP4, MOV, MKV, AVI, M4V, and WebM video through a file picker.
-- Each imported clip has a six-frame filmstrip in the upper-left media bin. Hover to skim, drag across it to select a range, or drag a yellow edge to refine the range. Drag the selected range onto a timeline insertion point or use the Add button. The same source can be used repeatedly.
+- Each imported clip has a six-frame filmstrip in the upper-left media bin. Hover to skim, drag across it to select a range, or drag a yellow edge to refine the range. Drag the yellow selection itself onto the timeline, or use the Add button. The same source can be used repeatedly.
 - Timeline clips show filmstrip previews. Drag clips to insertion points to reorder them, or use the arrow buttons. Select a clip to trim its in/out points, play it, or remove it.
-- Click a timeline boundary and choose Cut, Dissolve, Fade through Black/White, Wipe Left/Right, or Slide Left/Right. Transition tiles can also be dragged onto boundaries. Set their duration in seconds. Apply a fade at the first or last boundary.
+- Click a timeline boundary and choose Cut, Dissolve, Fade through Black/White, Wipe Left/Right, or Slide Left/Right from the illustrated menu. Set its duration in seconds. Press Delete to clear a selected transition or remove a selected clip.
 - Choose center, lower-third, or opening title presets, then click the title in the preview to edit its text.
-- Set clip volume from 0 to 4×, normalize audio, and change speed from 0.25× to 4× with a keep-pitch choice.
-- Save and reopen `.winmovie` projects, and export H.264/AAC MP4. The export dialog offers software encoding plus available NVIDIA, Intel, or AMD encoders, with software fallback if the hardware encoder cannot run.
+- Set clip volume from 0 to 4×, normalize audio, and enter a speed percentage from 25% to 400% in a dialog that compares original and new duration and offers a keep-pitch choice.
+- Save and reopen `.winmovie` projects. Timeline playback uses a low-resolution background render that includes transitions, titles, speed, fades, and audio processing.
+- Export H.264/AAC MP4 at a chosen size from 480p through 4K, limited by the smallest source video in the timeline. The app probes NVIDIA, Intel, and AMD encoders and chooses an available hardware encoder automatically, with software fallback. A modal progress overlay supports cancellation.
 
-The editor preview shows clip cuts, speed, basic volume, and title placement. The rendered MP4 applies the selected transitions, fades, normalization, and full volume settings. Source files remain in place, so moving them will break a saved project's media links.
+Source files remain in place, so moving them will break a saved project's media links.
 
 ## Build and run
 
@@ -38,10 +39,10 @@ Keep the complete publish folder together when distributing the app. In particul
 ## Editing flow
 
 1. Import one or more videos.
-2. Skim an imported video's filmstrip and drag to highlight a range. Drag **Drag selected range to timeline** onto a `+` boundary, or click **Add range to timeline**.
-3. Drag timeline clips to reorder them. Click a boundary to choose a transition and duration. Select a clip to trim it or set its title, speed, and audio. Click the title directly in the preview to type.
-4. Save the project and use **Export MP4**.
+2. Skim an imported video's filmstrip and drag to highlight a range. Drag inside the yellow range to a timeline card or `+` boundary, or click **Add range to timeline**.
+3. Drag timeline clips to reorder them. Click a boundary for the transition menu and duration. Select a clip to trim it or set its title, speed, and audio. Click the title directly in the preview to type. Use Delete on the selected clip or boundary.
+4. Let the timeline preview finish rendering in the background, then play it. Save the project and use **Export MP4** to pick a source-limited resolution.
 
 ### Current limits
 
-The preview plays transitions as cuts; the MP4 export contains the transitions. Titles and audio normalization are rendered on export. There are no separate audio tracks, effects browser, image clips, or background rendering yet. Export standardizes the picture to 1080p at 30 fps and audio to stereo 48 kHz.
+There are no separate audio tracks, effects browser, or image clips yet. Timeline preview is rendered at 480p and may take time after edits. Export uses 30 fps and stereo 48 kHz audio.

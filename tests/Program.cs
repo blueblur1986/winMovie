@@ -61,7 +61,8 @@ try
     if (await MediaEngine.ProbeAudioDurationAsync(musicPath) < 3.9) throw new Exception("Music duration was not detected.");
     var layered = new MovieProject { Assets = [asset], Clips = project.Clips.Take(2).ToList(),
         Titles = [new TitleItem { Start = .8, Duration = 1.9, Text = "Across both clips", Preset = TitlePreset.LowerThird,
-            Font = "Georgia", Color = "FFD34E", BackgroundColor = "000000", BackgroundOpacity = .65, Shadow = true, Outline = true }],
+            Font = "Georgia", Color = "FFD34E", BackgroundColor = "000000", BackgroundOpacity = .65,
+            Shadow = true, Outline = true, FadeIn = true, FadeOut = true, FadeInDuration = .35, FadeOutDuration = .45 }],
         Music = [new MusicClip { Path = musicPath, Start = .2, In = .1, Out = 1.7, Volume = .4,
             FadeOut = true, FadeOutDuration = 1.1 }] };
     var layeredOutput = Path.Combine(root, "layered.mp4");

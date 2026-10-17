@@ -10,7 +10,7 @@
             <RowDefinition Height="40" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="430" />
+            <RowDefinition Height="340" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -18,7 +18,7 @@
             <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                 <Image Source="Assets/WinMovie.png" Width="22" Height="22" />
                 <TextBlock Text="WinMovie" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <TextBlock Text="·  1.0 Beta 4" Opacity="0.6" VerticalAlignment="Center" />
+                <TextBlock Text="·  1.0 Beta 5" Opacity="0.6" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>
 
@@ -48,7 +48,7 @@
                 <ColumnDefinition Width="3*" MinWidth="420" />
             </Grid.ColumnDefinitions>
 
-            <Grid Grid.Column="0" RowSpacing="10">
+            <Grid x:Name="MediaPanel" Grid.Column="0" RowSpacing="10">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -70,6 +70,10 @@
                 </Grid>
             </Grid>
 
+            <ScrollViewer x:Name="TitleEditorScroller" Grid.Column="0" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="TitleEditorContent" Spacing="10" Padding="0,0,8,0" />
+            </ScrollViewer>
+
             <Grid Grid.Column="1" RowSpacing="10">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -81,12 +85,14 @@
                     <TextBlock Text="Preview" FontSize="17" FontWeight="SemiBold" />
                     <TextBlock x:Name="PreviewMode" HorizontalAlignment="Right" Opacity="0.7" />
                 </Grid>
-                <Grid Grid.Row="1" Background="#090B0D" MinHeight="250">
-                    <media:MediaPlayerElement x:Name="Preview" AreTransportControlsEnabled="False" Stretch="Uniform" />
+                <Grid x:Name="PreviewHost" Grid.Row="1" Background="#090B0D" MinHeight="250" SizeChanged="PreviewHost_SizeChanged">
+                    <media:MediaPlayerElement x:Name="Preview" AreTransportControlsEnabled="False" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                    <Border x:Name="TitleBackgroundPreview" Visibility="Collapsed" Height="100" HorizontalAlignment="Stretch" VerticalAlignment="Center" IsHitTestVisible="False" />
+                    <TextBlock x:Name="TitleShadowPreview" Visibility="Collapsed" Width="420" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="Black" IsHitTestVisible="False" />
                     <TextBox x:Name="TitleOverlay" Visibility="Collapsed" TextChanged="TitleOverlay_TextChanged"
                              HorizontalAlignment="Center" VerticalAlignment="Center" Width="420"
                              FontSize="27" FontWeight="SemiBold" TextAlignment="Center"
-                             PlaceholderText="Click to edit title" Background="#99000000" BorderThickness="0" />
+                             PlaceholderText="Click to edit title" Background="Transparent" BorderThickness="0" />
                 </Grid>
                 <Grid Grid.Row="2" ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
@@ -104,9 +110,9 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="128" />
-                <RowDefinition Height="68" />
-                <RowDefinition Height="68" />
+                <RowDefinition Height="46" />
+                <RowDefinition Height="96" />
+                <RowDefinition Height="46" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Grid>
@@ -117,22 +123,22 @@
                 <TextBlock Text="Transitions" VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.7" />
                 <ComboBox x:Name="TransitionCombo" Width="185" PlaceholderText="Choose transition" SelectionChanged="TransitionCombo_SelectionChanged" />
                 <TextBlock x:Name="BoundaryLabel" VerticalAlignment="Center" Margin="14,0,0,0" Opacity="0.7" />
-                <NumberBox x:Name="TransitionSeconds" Width="84" Header="Seconds" SpinButtonPlacementMode="Compact" Minimum="0.05" Maximum="10" SmallChange="0.1" ValueChanged="TransitionSeconds_ValueChanged" />
+                <NumberBox x:Name="TransitionSeconds" Width="84" SpinButtonPlacementMode="Compact" Minimum="0.05" Maximum="10" SmallChange="0.1" ValueChanged="TransitionSeconds_ValueChanged" />
                 <TextBlock Text="Ctrl-click clips or Ctrl+A for batch edits. Delete removes the selection." VerticalAlignment="Center" Opacity="0.55" FontSize="11" Margin="15,0,0,0" />
             </StackPanel>
-            <ScrollViewer x:Name="TimelineScroller" Grid.Row="2" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled" AllowDrop="True" DragOver="Timeline_DragOver" Drop="Timeline_Drop">
-                <StackPanel x:Name="TimelineList" Orientation="Horizontal" Spacing="4" MinWidth="600" Background="#1B232C" AllowDrop="True" DragOver="Timeline_DragOver" Drop="Timeline_Drop" />
-            </ScrollViewer>
-            <Grid Grid.Row="3" ColumnSpacing="8">
+            <Grid Grid.Row="2" ColumnSpacing="8">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <StackPanel Spacing="4" Width="130">
                     <TextBlock Text="Titles" FontWeight="SemiBold" />
                     <Button Content="+ Add title" Click="AddTitle_Click" />
                 </StackPanel>
                 <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
-                    <Canvas x:Name="TitleTrackCanvas" Height="60" Width="400" Background="#202838" AllowDrop="True" DragOver="Track_DragOver" Drop="TitleTrack_Drop" />
+                    <Canvas x:Name="TitleTrackCanvas" Height="40" Width="400" Background="#202838" AllowDrop="True" DragOver="Track_DragOver" Drop="TitleTrack_Drop" />
                 </ScrollViewer>
             </Grid>
+            <ScrollViewer x:Name="TimelineScroller" Grid.Row="3" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled" AllowDrop="True" DragOver="Timeline_DragOver" Drop="Timeline_Drop">
+                <StackPanel x:Name="TimelineList" Orientation="Horizontal" Spacing="4" MinWidth="600" Background="#1B232C" AllowDrop="True" DragOver="Timeline_DragOver" Drop="Timeline_Drop" />
+            </ScrollViewer>
             <Grid Grid.Row="4" ColumnSpacing="8">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <StackPanel Spacing="4" Width="130">
@@ -140,7 +146,7 @@
                     <Button Content="+ Add music" Click="AddMusic_Click" />
                 </StackPanel>
                 <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
-                    <Canvas x:Name="MusicTrackCanvas" Height="60" Width="400" Background="#1F3034" AllowDrop="True" DragOver="Track_DragOver" Drop="MusicTrack_Drop" />
+                    <Canvas x:Name="MusicTrackCanvas" Height="40" Width="400" Background="#1F3034" AllowDrop="True" DragOver="Track_DragOver" Drop="MusicTrack_Drop" />
                 </ScrollViewer>
             </Grid>
             <ScrollViewer Grid.Row="5" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">

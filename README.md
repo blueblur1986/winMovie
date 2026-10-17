@@ -2,7 +2,7 @@
 
 A small, native WinUI 3 video editor built around the quick editing flow of iMovie '08–'11.
 
-Current preview: **v1.0-beta.4**. The next feature iteration will be beta 5; release candidates and the stable release will be named when the maintainer decides they are ready.
+Current preview: **v1.0-beta.5**. The next feature iteration will be beta 6; release candidates and the stable release will be named when the maintainer decides they are ready.
 
 ## What works
 
@@ -10,10 +10,10 @@ Current preview: **v1.0-beta.4**. The next feature iteration will be beta 5; rel
 - Each imported clip has a six-frame filmstrip in the upper-left media bin. Hover to skim, drag across it to select a range, or drag a yellow edge to refine the range. Drag the yellow selection itself onto the timeline, or use the Add button. The same source can be used repeatedly.
 - Timeline clips show filmstrip previews. Drag clips to insertion points to reorder them, or use the arrow buttons. Ctrl-click clips or press Ctrl+A while the timeline is active to select multiple clips for shared settings or deletion. Trimming applies to the primary clip.
 - Click a timeline boundary and choose Cut, Dissolve, Fade through Black/White, Wipe Left/Right, or Slide Left/Right from the illustrated menu. Set its duration in seconds. Press Delete to clear a selected transition or remove a selected clip.
-- Add independent titles on the title track, set start and duration, drag to change timing, and choose placement, font, text/background colors, opacity, shadow, and outline. Titles can span clip boundaries; click the title in the preview to edit its text. Existing clip titles remain supported.
-- Add background music on its own track, set its timeline start, source trim, volume, and optional fade out. Drag its card to change its start time.
+- Add independent titles on the compact track above the main timeline, set start and duration, drag to change timing, and choose placement, any installed font, text/background colors through RGB/HEX pickers, opacity, shadow, outline, and fade in/out. Titles can span clip boundaries. The title editor stays alongside the video and previews changes as you make them; click the title in the preview to edit its text. Existing clip titles remain supported.
+- Add background music on the compact track below the main timeline, set its timeline start, source trim, volume, and optional fade out. Drag its card to change its start time.
 - Set clip volume from 0 to 4×, normalize audio, and enter a speed percentage from 25% to 400% in a dialog that compares original and new duration and offers a keep-pitch choice.
-- Press Space over a source filmstrip to play from the hovered frame and press it again to pause. With the timeline active, Space plays or pauses it. Save and reopen `.winmovie` projects. Timeline playback uses a low-resolution background render that includes transitions, titles, music, speed, fades, and audio processing.
+- Press Space over a source filmstrip to play from the hovered frame and press it again to pause. With the timeline active, Space plays or pauses it; key repeat is ignored and Space is handled before focused buttons. Save and reopen `.winmovie` projects. Timeline playback uses a low-resolution background render that includes transitions, titles, music, speed, fades, and audio processing.
 - Export H.264/AAC MP4 at a chosen size from 480p through 4K, limited by the smallest source video in the timeline. The app probes NVIDIA, Intel, and AMD encoders and chooses an available hardware encoder automatically, with software fallback. A modal progress overlay supports cancellation.
 
 Source files remain in place, so moving them will break a saved project's media links.

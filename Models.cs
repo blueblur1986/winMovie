@@ -44,12 +44,17 @@ public sealed class TitleItem
     public string Text { get; set; } = "Your title";
     public TitlePreset Preset { get; set; } = TitlePreset.Center;
     public string Font { get; set; } = "Segoe UI";
+    public string FontFile { get; set; } = "";
     public int FontSize { get; set; } = 62;
     public string Color { get; set; } = "FFFFFF";
     public string BackgroundColor { get; set; } = "000000";
     public double BackgroundOpacity { get; set; } = .45;
     public bool Shadow { get; set; } = true;
     public bool Outline { get; set; }
+    public bool FadeIn { get; set; }
+    public bool FadeOut { get; set; }
+    public double FadeInDuration { get; set; } = .35;
+    public double FadeOutDuration { get; set; } = .35;
 }
 
 public sealed class MusicClip

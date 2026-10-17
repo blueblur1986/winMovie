@@ -252,7 +252,8 @@ public static class MediaEngine
                 "Arial" => "arial.ttf", "Georgia" => "georgia.ttf", "Consolas" => "consola.ttf",
                 "Times New Roman" => "times.ttf", _ => "segoeui.ttf"
             };
-            var fontPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts", fontFile);
+            var fontPath = File.Exists(title.FontFile) ? title.FontFile :
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts", fontFile);
             var area = title.Preset == TitlePreset.LowerThird ?
                 ((int)(settings.Height * .72), (int)(settings.Height * .28), "h*0.79") :
                 title.Preset == TitlePreset.Opening ?
@@ -262,15 +263,31 @@ public static class MediaEngine
             var background = SafeColor(title.BackgroundColor);
             var foreground = SafeColor(title.Color);
             var opacity = Math.Clamp(title.BackgroundOpacity, 0, 1);
+            graph.Append($"color=c=black:s={settings.Width}x{settings.Height}:r=30:d={F(total)},format=rgba,colorchannelmixer=aa=0[tbase{titleIndex}];");
+            var titleLayer = $"[tbase{titleIndex}]";
             if (opacity > .001)
             {
-                graph.Append($"{video}drawbox=x=0:y={area.Item1}:w=iw:h={area.Item2}:color=0x{background}@{F(opacity)}:t=fill:enable='{enable}'[tb{titleIndex}];");
-                video = $"[tb{titleIndex}]";
+                graph.Append($"{titleLayer}drawbox=x=0:y={area.Item1}:w=iw:h={area.Item2}:color=0x{background}@{F(opacity)}:t=fill:replace=1[tbg{titleIndex}];");
+                titleLayer = $"[tbg{titleIndex}]";
             }
             var size = Math.Max(12, (int)Math.Round(Math.Clamp(title.FontSize, 16, 160) * settings.Height / 1080d));
             var shadow = title.Shadow ? ":shadowcolor=black@0.9:shadowx=2:shadowy=2" : "";
             var outline = title.Outline ? ":borderw=2:bordercolor=black" : "";
-            graph.Append($"{video}drawtext=fontfile='{FilterPath(fontPath)}':textfile='{FilterPath(textPath)}':fontsize={size}:fontcolor=0x{foreground}:x=(w-text_w)/2:y={area.Item3}{shadow}{outline}:enable='{enable}'[t{titleIndex}];");
+            graph.Append($"{titleLayer}drawtext=fontfile='{FilterPath(fontPath)}':textfile='{FilterPath(textPath)}':fontsize={size}:fontcolor=0x{foreground}:x=(w-text_w)/2:y={area.Item3}{shadow}{outline}[ttxt{titleIndex}];");
+            titleLayer = $"[ttxt{titleIndex}]";
+            if (title.FadeIn)
+            {
+                var fade = Math.Min(Math.Clamp(title.FadeInDuration, .05, 10), (end - start) / 2);
+                graph.Append($"{titleLayer}fade=t=in:st={F(start)}:d={F(fade)}:alpha=1[tfi{titleIndex}];");
+                titleLayer = $"[tfi{titleIndex}]";
+            }
+            if (title.FadeOut)
+            {
+                var fade = Math.Min(Math.Clamp(title.FadeOutDuration, .05, 10), (end - start) / 2);
+                graph.Append($"{titleLayer}fade=t=out:st={F(end - fade)}:d={F(fade)}:alpha=1[tfo{titleIndex}];");
+                titleLayer = $"[tfo{titleIndex}]";
+            }
+            graph.Append($"{video}{titleLayer}overlay=enable='{enable}':shortest=1:format=auto[t{titleIndex}];");
             video = $"[t{titleIndex}]";
             titleIndex++;
         }

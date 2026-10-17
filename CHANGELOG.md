@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0-beta.5
+
+- Move titles above the main timeline and music below it; shorten all three tracks to give the media bin and preview more height.
+- Scale preview video within its available area while preserving its aspect ratio, with title placement aligned to the displayed video frame.
+- Show all Windows installed fonts in the title editor with each font name rendered in that face. Add native text and background color pickers with RGB and HEX entry.
+- Preview title text, placement, style, and color over the video while editing; add separate fade in and fade out controls for timed titles and render their fades into exports.
+- Handle Space before focused buttons and ignore key repeat so playback toggles once per press.
+
 ## v1.0-beta.4
 
 - Ctrl-click timeline clips to select multiple, or Ctrl+A to select all, then apply common speed, volume, normalization, fades, and incoming transitions or delete them together.

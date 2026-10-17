@@ -18,7 +18,7 @@
             <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                 <Image Source="Assets/WinMovie.png" Width="22" Height="22" />
                 <TextBlock Text="WinMovie" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <TextBlock Text="·  1.0 Beta 5" Opacity="0.6" VerticalAlignment="Center" />
+                <TextBlock Text="·  1.0 Beta 6" Opacity="0.6" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>
 
@@ -44,11 +44,11 @@
 
         <Grid Grid.Row="2" Padding="18,16" ColumnSpacing="18">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*" MinWidth="320" />
+                <ColumnDefinition Width="2.5*" MinWidth="320" />
                 <ColumnDefinition Width="3*" MinWidth="420" />
             </Grid.ColumnDefinitions>
 
-            <Grid x:Name="MediaPanel" Grid.Column="0" RowSpacing="10">
+            <Grid x:Name="MediaPanel" Grid.Column="0" RowSpacing="10" SizeChanged="MediaPanel_SizeChanged">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -88,7 +88,7 @@
                 <Grid x:Name="PreviewHost" Grid.Row="1" Background="#090B0D" MinHeight="250" SizeChanged="PreviewHost_SizeChanged">
                     <media:MediaPlayerElement x:Name="Preview" AreTransportControlsEnabled="False" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
                     <Border x:Name="TitleBackgroundPreview" Visibility="Collapsed" Height="100" HorizontalAlignment="Stretch" VerticalAlignment="Center" IsHitTestVisible="False" />
-                    <TextBlock x:Name="TitleShadowPreview" Visibility="Collapsed" Width="420" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="Black" IsHitTestVisible="False" />
+                    <Image x:Name="TitleGraphicPreview" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Fill" Tapped="TitleGraphic_Tapped" />
                     <TextBox x:Name="TitleOverlay" Visibility="Collapsed" TextChanged="TitleOverlay_TextChanged"
                              HorizontalAlignment="Center" VerticalAlignment="Center" Width="420"
                              FontSize="27" FontWeight="SemiBold" TextAlignment="Center"
@@ -123,6 +123,7 @@
                 <TextBlock Text="Transitions" VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.7" />
                 <ComboBox x:Name="TransitionCombo" Width="185" PlaceholderText="Choose transition" SelectionChanged="TransitionCombo_SelectionChanged" />
                 <TextBlock x:Name="BoundaryLabel" VerticalAlignment="Center" Margin="14,0,0,0" Opacity="0.7" />
+                <TextBlock Text="Duration (in seconds)" VerticalAlignment="Center" Margin="14,0,0,0" Opacity="0.7" />
                 <NumberBox x:Name="TransitionSeconds" Width="84" SpinButtonPlacementMode="Compact" Minimum="0.05" Maximum="10" SmallChange="0.1" ValueChanged="TransitionSeconds_ValueChanged" />
                 <TextBlock Text="Ctrl-click clips or Ctrl+A for batch edits. Delete removes the selection." VerticalAlignment="Center" Opacity="0.55" FontSize="11" Margin="15,0,0,0" />
             </StackPanel>

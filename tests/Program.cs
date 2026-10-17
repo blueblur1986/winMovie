@@ -62,10 +62,21 @@ try
     var layered = new MovieProject { Assets = [asset], Clips = project.Clips.Take(2).ToList(),
         Titles = [new TitleItem { Start = .8, Duration = 1.9, Text = "Across both clips", Preset = TitlePreset.LowerThird,
             Font = "Georgia", Color = "FFD34E", BackgroundColor = "000000", BackgroundOpacity = .65,
-            Shadow = true, Outline = true, FadeIn = true, FadeOut = true, FadeInDuration = .35, FadeOutDuration = .45 }],
+            Shadow = true, ShadowDistance = 5, ShadowBlur = 8, ShadowAngle = 45, ShadowOpacity = .4,
+            Outline = true, OutlineThickness = 4, FadeIn = true, FadeOut = true, FadeInDuration = .35, FadeOutDuration = .45 }],
         Music = [new MusicClip { Path = musicPath, Start = .2, In = .1, Out = 1.7, Volume = .4,
             FadeOut = true, FadeOutDuration = 1.1 }] };
     var layeredOutput = Path.Combine(root, "layered.mp4");
+    var graphic = Path.Combine(root, "title.png");
+    await MediaEngine.RenderTitleGraphicAsync(layered.Titles[0], 640, 360, graphic);
+    var rgba = Path.Combine(root, "title.rgba");
+    var pixels = await MediaEngine.RunAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", graphic,
+        "-frames:v", "1", "-vf", "format=rgba", "-f", "rawvideo", rgba]);
+    if (pixels.ExitCode != 0) throw new Exception(pixels.Error);
+    var bytes = await File.ReadAllBytesAsync(rgba);
+    if (bytes.Length != 640 * 360 * 4 || bytes[3] != 0 || !Enumerable.Range(0, bytes.Length / 4).Any(i => bytes[i * 4 + 3] > 0))
+        throw new Exception("Title graphic must have transparent corners and visible content.");
+    Console.WriteLine("PASS: transparent title graphic with blurred shadow and outline");
     await MediaEngine.ExportAsync(layered, layeredOutput, new ExportSettings(640, 360, "Software (H.264)"),
         (_, _) => { }, CancellationToken.None);
     var layeredInfo = await MediaEngine.ProbeAsync(layeredOutput);

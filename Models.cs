@@ -50,7 +50,12 @@ public sealed class TitleItem
     public string BackgroundColor { get; set; } = "000000";
     public double BackgroundOpacity { get; set; } = .45;
     public bool Shadow { get; set; } = true;
+    public double ShadowDistance { get; set; } = 3;
+    public double ShadowBlur { get; set; } = 5;
+    public double ShadowAngle { get; set; } = 45;
+    public double ShadowOpacity { get; set; } = .4;
     public bool Outline { get; set; }
+    public int OutlineThickness { get; set; } = 2;
     public bool FadeIn { get; set; }
     public bool FadeOut { get; set; }
     public double FadeInDuration { get; set; } = .35;

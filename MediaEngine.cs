@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -11,6 +12,9 @@ public sealed record ExportSettings(int Width, int Height, string Encoder, bool 
 public static class MediaEngine
 {
     private static readonly CultureInfo C = CultureInfo.InvariantCulture;
+    private static readonly string PreviewSegmentDirectory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "WinMoviePreviewSegments");
+    private static readonly SemaphoreSlim PreviewCacheGate = new(1, 1);
+    private static bool _previewCachePruned;
     public static string F(double number) => number.ToString("0.######", C);
 
     public static async Task<MediaAsset> ProbeAsync(string path)
@@ -119,6 +123,7 @@ public static class MediaEngine
         Directory.CreateDirectory(temp);
         try
         {
+            if (settings.Preview) PrunePreviewSegmentCache();
             var segments = new List<string>();
             for (var i = 0; i < project.Clips.Count; i++)
             {
@@ -132,7 +137,8 @@ public static class MediaEngine
                     asset.Width = probed.Width; asset.Height = probed.Height; asset.HasAudio = probed.HasAudio;
                 }
                 var segment = System.IO.Path.Combine(temp, $"segment-{i:000}.mp4");
-                await RenderSegmentAsync(clip, asset, segment, temp, settings, cancellationToken);
+                if (settings.Preview) await RenderCachedPreviewSegmentAsync(clip, asset, segment, temp, settings, cancellationToken);
+                else await RenderSegmentAsync(clip, asset, segment, temp, settings, cancellationToken);
                 segments.Add(segment);
                 progress(.8 * (i + 1d) / project.Clips.Count, $"Preparing clip {i + 1} of {project.Clips.Count}");
             }
@@ -144,6 +150,57 @@ public static class MediaEngine
         {
             try { Directory.Delete(temp, true); } catch { /* Keep export error if cleanup fails. */ }
         }
+    }
+
+    private static async Task RenderCachedPreviewSegmentAsync(TimelineClip clip, MediaAsset asset,
+        string output, string temp, ExportSettings settings, CancellationToken token)
+    {
+        try { Directory.CreateDirectory(PreviewSegmentDirectory); }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        { await RenderSegmentAsync(clip, asset, output, temp, settings, token); return; }
+        var source = new FileInfo(clip.SourcePath);
+        var identity = $"{source.FullName}|{source.Length}|{source.LastWriteTimeUtc.Ticks}|{settings.Width}x{settings.Height}|{settings.Encoder}|{JsonSerializer.Serialize(clip)}";
+        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
+        var cached = System.IO.Path.Combine(PreviewSegmentDirectory, key + ".mp4");
+        await PreviewCacheGate.WaitAsync(token);
+        try
+        {
+            if (File.Exists(cached) && new FileInfo(cached).Length > 1024)
+            {
+                File.Copy(cached, output, true);
+                try { File.SetLastWriteTimeUtc(cached, DateTime.UtcNow); } catch { }
+                return;
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException) { /* Render without using the cache. */ }
+        finally { PreviewCacheGate.Release(); }
+        await RenderSegmentAsync(clip, asset, output, temp, settings, token);
+        await PreviewCacheGate.WaitAsync(token);
+        try
+        {
+            if (!File.Exists(cached)) File.Copy(output, cached);
+        }
+        catch (IOException) { /* Keep the completed preview even when caching fails. */ }
+        catch (UnauthorizedAccessException) { /* Keep the completed preview even when caching fails. */ }
+        finally { PreviewCacheGate.Release(); }
+    }
+
+    private static void PrunePreviewSegmentCache()
+    {
+        if (_previewCachePruned) return;
+        _previewCachePruned = true;
+        try
+        {
+            if (!Directory.Exists(PreviewSegmentDirectory)) return;
+            long total = 0;
+            foreach (var file in new DirectoryInfo(PreviewSegmentDirectory).GetFiles("*.mp4").OrderByDescending(x => x.LastWriteTimeUtc))
+            {
+                total += file.Length;
+                if (total <= 512_000_000 && DateTime.UtcNow - file.LastWriteTimeUtc < TimeSpan.FromDays(7)) continue;
+                try { file.Delete(); } catch { }
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException) { /* Cache maintenance must not block preview. */ }
     }
 
     private static async Task RenderSegmentAsync(TimelineClip clip, MediaAsset asset, string output,
@@ -189,11 +246,80 @@ public static class MediaEngine
         if (clip.FadeIn) audio += $",afade=t=in:st=0:d={F(fadeIn)}";
         if (clip.FadeOut) audio += $",afade=t=out:st={F(Math.Max(0, duration - fadeOut))}:d={F(fadeOut)}";
         audio += "[a]";
-        args.AddRange(["-filter_complex", video + ";" + audio, "-map", "[v]", "-map", "[a]",
-            "-c:v", "libx264", "-preset", settings.Preview ? "ultrafast" : "veryfast", "-crf", settings.Preview ? "30" : "18", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", settings.Preview ? "96k" : "192k", "-ar", "48000", "-ac", "2", "-shortest", output]);
+        var encoder = settings.Preview ? EncoderName(settings.Encoder) : "libx264";
+        args.AddRange(["-filter_complex", video + ";" + audio, "-map", "[v]", "-map", "[a]", "-c:v", encoder]);
+        if (encoder == "libx264") args.AddRange(["-preset", settings.Preview ? "ultrafast" : "veryfast", "-crf", settings.Preview ? "30" : "18"]);
+        else if (encoder == "h264_nvenc") args.AddRange(["-preset", "p1", "-cq", "30"]);
+        else args.AddRange(["-b:v", "2M"]);
+        args.AddRange(["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", settings.Preview ? "96k" : "192k", "-ar", "48000", "-ac", "2", "-shortest", output]);
         var result = await RunAsync("ffmpeg", args, token);
+        if (result.ExitCode != 0 && settings.Preview && encoder != "libx264")
+        {
+            await RenderSegmentAsync(clip, asset, output, temp, settings with { Encoder = "Software (H.264)" }, token);
+            return;
+        }
         if (result.ExitCode != 0) throw new InvalidOperationException("Could not prepare clip: " + result.Error);
+    }
+
+    public static async Task RenderTitleGraphicAsync(TitleItem title, int width, int height, string output,
+        CancellationToken token = default)
+    {
+        if (width < 2 || height < 2) throw new ArgumentOutOfRangeException(nameof(width));
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(output)!);
+        var textPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(output)!, Guid.NewGuid().ToString("N") + ".txt");
+        await File.WriteAllTextAsync(textPath, title.Text, new UTF8Encoding(false), token);
+        try
+        {
+            var fontFile = title.Font switch
+            {
+                "Arial" => "arial.ttf", "Georgia" => "georgia.ttf", "Consolas" => "consola.ttf",
+                "Times New Roman" => "times.ttf", _ => "segoeui.ttf"
+            };
+            var fontPath = File.Exists(title.FontFile) ? title.FontFile :
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts", fontFile);
+            var area = title.Preset == TitlePreset.LowerThird ?
+                ((int)(height * .72), (int)(height * .28), "h*0.79") :
+                title.Preset == TitlePreset.Opening ?
+                (0, height, "(h-text_h)/2") :
+                ((int)(height * .35), (int)(height * .30), "(h-text_h)/2");
+            var size = Math.Max(12, (int)Math.Round(Math.Clamp(title.FontSize, 16, 160) * height / 1080d));
+            var drawText = $"fontfile='{FilterPath(fontPath)}':textfile='{FilterPath(textPath)}':fontsize={size}";
+            var graph = new StringBuilder("[0:v]format=rgba,colorchannelmixer=aa=0[clear];");
+            var baseLayer = "[clear]";
+            if (title.Shadow)
+            {
+                graph.Append("[clear]split=2[base][shadowbase];");
+                baseLayer = "[base]";
+            }
+            var backgroundOpacity = Math.Clamp(title.BackgroundOpacity, 0, 1);
+            if (backgroundOpacity > .001)
+            {
+                graph.Append($"{baseLayer}drawbox=x=0:y={area.Item1}:w=iw:h={area.Item2}:color=0x{SafeColor(title.BackgroundColor)}@{F(backgroundOpacity)}:t=fill:replace=1[background];");
+                baseLayer = "[background]";
+            }
+            if (title.Shadow)
+            {
+                var radians = Math.Clamp(title.ShadowAngle, 0, 360) * Math.PI / 180;
+                var distance = Math.Clamp(title.ShadowDistance, 0, 30) * height / 1080d;
+                var dx = (int)Math.Round(distance * Math.Cos(radians));
+                var dy = (int)Math.Round(distance * Math.Sin(radians));
+                var x = $"(w-text_w)/2{(dx >= 0 ? "+" : "")}{dx}";
+                var y = $"{area.Item3}{(dy >= 0 ? "+" : "")}{dy}";
+                graph.Append($"[shadowbase]drawtext={drawText}:fontcolor=black@{F(Math.Clamp(title.ShadowOpacity, 0, 1))}:x={x}:y={y}");
+                var blur = Math.Clamp(title.ShadowBlur, 0, 30) * height / 1080d;
+                if (blur > .1) graph.Append($",gblur=sigma={F(blur)}:planes=8");
+                graph.Append("[shadow];");
+                graph.Append($"{baseLayer}[shadow]overlay=shortest=1:format=auto[withshadow];");
+                baseLayer = "[withshadow]";
+            }
+            var outline = title.Outline ? Math.Max(1, (int)Math.Round(Math.Clamp(title.OutlineThickness, 1, 16) * height / 1080d)) : 0;
+            graph.Append($"{baseLayer}drawtext={drawText}:fontcolor=0x{SafeColor(title.Color)}:x=(w-text_w)/2:y={area.Item3}:borderw={outline}:bordercolor=black@0.9[out]");
+            var result = await RunAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                $"color=c=black:s={width}x{height}:r=1:d=1", "-filter_complex", graph.ToString(),
+                "-map", "[out]", "-frames:v", "1", "-update", "1", "-pix_fmt", "rgba", output], token);
+            if (result.ExitCode != 0) throw new InvalidOperationException("Could not render title: " + result.Error);
+        }
+        finally { try { File.Delete(textPath); } catch { } }
     }
 
     private static async Task JoinAsync(MovieProject project, IReadOnlyList<string> segments,
@@ -245,36 +371,13 @@ public static class MediaEngine
             var start = Math.Clamp(title.Start, 0, total);
             var end = Math.Clamp(title.Start + title.Duration, start, total);
             if (end <= start) continue;
-            var textPath = System.IO.Path.Combine(temp, $"title-{titleIndex}.txt");
-            await File.WriteAllTextAsync(textPath, title.Text, new UTF8Encoding(false), token);
-            var fontFile = title.Font switch
-            {
-                "Arial" => "arial.ttf", "Georgia" => "georgia.ttf", "Consolas" => "consola.ttf",
-                "Times New Roman" => "times.ttf", _ => "segoeui.ttf"
-            };
-            var fontPath = File.Exists(title.FontFile) ? title.FontFile :
-                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts", fontFile);
-            var area = title.Preset == TitlePreset.LowerThird ?
-                ((int)(settings.Height * .72), (int)(settings.Height * .28), "h*0.79") :
-                title.Preset == TitlePreset.Opening ?
-                (0, settings.Height, "(h-text_h)/2") :
-                ((int)(settings.Height * .35), (int)(settings.Height * .30), "(h-text_h)/2");
+            var graphic = System.IO.Path.Combine(temp, $"title-{titleIndex}.png");
+            await RenderTitleGraphicAsync(title, settings.Width, settings.Height, graphic, token);
+            var inputIndex = segments.Count + music.Count + titleIndex;
+            args.AddRange(["-loop", "1", "-framerate", "30", "-i", graphic]);
             var enable = $"between(t,{F(start)},{F(end)})";
-            var background = SafeColor(title.BackgroundColor);
-            var foreground = SafeColor(title.Color);
-            var opacity = Math.Clamp(title.BackgroundOpacity, 0, 1);
-            graph.Append($"color=c=black:s={settings.Width}x{settings.Height}:r=30:d={F(total)},format=rgba,colorchannelmixer=aa=0[tbase{titleIndex}];");
+            graph.Append($"[{inputIndex}:v]format=rgba[tbase{titleIndex}];");
             var titleLayer = $"[tbase{titleIndex}]";
-            if (opacity > .001)
-            {
-                graph.Append($"{titleLayer}drawbox=x=0:y={area.Item1}:w=iw:h={area.Item2}:color=0x{background}@{F(opacity)}:t=fill:replace=1[tbg{titleIndex}];");
-                titleLayer = $"[tbg{titleIndex}]";
-            }
-            var size = Math.Max(12, (int)Math.Round(Math.Clamp(title.FontSize, 16, 160) * settings.Height / 1080d));
-            var shadow = title.Shadow ? ":shadowcolor=black@0.9:shadowx=2:shadowy=2" : "";
-            var outline = title.Outline ? ":borderw=2:bordercolor=black" : "";
-            graph.Append($"{titleLayer}drawtext=fontfile='{FilterPath(fontPath)}':textfile='{FilterPath(textPath)}':fontsize={size}:fontcolor=0x{foreground}:x=(w-text_w)/2:y={area.Item3}{shadow}{outline}[ttxt{titleIndex}];");
-            titleLayer = $"[ttxt{titleIndex}]";
             if (title.FadeIn)
             {
                 var fade = Math.Min(Math.Clamp(title.FadeInDuration, .05, 10), (end - start) / 2);

@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.0-beta.6
+
+- Render live titles with the same installed font file and graphics path as export. Add a configurable transparent, blurred shadow and a per-letter pixel outline.
+- Make source filmstrips wider for more precise range selection, and support Delete for selected title and music tracks when a parameter field is not being edited.
+- Label transition timing as duration in seconds, and route clip card drops to timeline reordering.
+- Enable native spelling correction in the title text field.
+- Cache unchanged preview clip segments and automatically try a detected hardware H.264 encoder, falling back to software when needed.
+- Place new titles at the current timeline position for five seconds by default, and suggest the saved project name for MP4 export.
+
 ## v1.0-beta.5
 
 - Move titles above the main timeline and music below it; shorten all three tracks to give the media bin and preview more height.

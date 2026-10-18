@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0-beta.7
+
+- Make timeline clip reordering work with a direct drag gesture and highlighted insertion point.
+- Give export progress a solid foreground panel over a dimmed, blurred editor, and offer Open file and Open folder when export completes.
+- Prompt to save or discard changes before closing, starting a new movie, or opening another project. Mark Discard changes in red and autosave previously saved projects every 30 seconds after edits.
+- Add an application screenshot to the README.
+
 ## v1.0-beta.6
 
 - Render live titles with the same installed font file and graphics path as export. Add a configurable transparent, blurred shadow and a per-letter pixel outline.

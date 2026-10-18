@@ -1,6 +1,8 @@
 using System.Text.Json;
+using System.Diagnostics;
 using Microsoft.Win32;
 using Microsoft.UI;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -22,6 +24,10 @@ public sealed partial class MainWindow : Window
     private MovieProject _project = new();
     private readonly MediaPlayer _player = new();
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromMilliseconds(50) };
+    private readonly DispatcherTimer _autoSaveTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
+    private string _savedSnapshot = "";
+    private bool _closeApproved, _closingPrompt;
     private readonly string _thumbDirectory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "WinMovieThumbs");
     private readonly string _previewDirectory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "WinMoviePreviews");
     private MediaAsset? _selectedAsset;
@@ -53,6 +59,11 @@ public sealed partial class MainWindow : Window
     private DateTime _lastSkim = DateTime.MinValue;
     private readonly HashSet<string> _loadingFilmstrips = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Canvas> _mediaStrips = new(StringComparer.OrdinalIgnoreCase);
+    private int _clipDragSource = -1, _clipDragInsertion;
+    private Windows.Foundation.Point _clipDragOrigin;
+    private bool _clipDragMoved, _suppressClipClick;
+    private Border? _clipDragMarker;
+    private Microsoft.UI.Xaml.Media.Brush? _clipDragMarkerBrush;
     private Canvas? _dragStrip;
     private int _rangeDragMode;
     private int _selectedBoundary = -1;
@@ -63,7 +74,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        Title = "WinMovie · 1.0 Beta 6";
+        Title = "WinMovie · 1.0 Beta 7";
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1500, 1000));
@@ -99,12 +110,18 @@ public sealed partial class MainWindow : Window
         });
         _clock.Tick += Clock_Tick;
         _clock.Start();
+        _savedSnapshot = ProjectSnapshot();
+        _autoSaveTimer.Tick += AutoSave_Tick;
+        _autoSaveTimer.Start();
+        AppWindow.Closing += Window_Closing;
         TitleBox.SelectedIndex = 0;
         VolumeSlider.Value = 1;
         EditorSurface.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(Editor_KeyDown), true);
         EditorSurface.AddHandler(UIElement.PreviewKeyUpEvent, new KeyEventHandler(Editor_KeyUp), true);
         Activated += (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated) _spaceHeld = false; };
         TimelinePanel.PointerPressed += (_, _) => _timelineFocused = true;
+        TimelinePanel.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(TimelineClip_PointerMoved), true);
+        TimelinePanel.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(TimelineClip_PointerReleased), true);
         RefreshAll();
     }
 
@@ -137,8 +154,9 @@ public sealed partial class MainWindow : Window
         Status.Text = $"Imported {imported} video{(imported == 1 ? "" : "s")}.";
     }
 
-    private void New_Click(object sender, RoutedEventArgs e)
+    private async void New_Click(object sender, RoutedEventArgs e)
     {
+        if (!await ConfirmUnsavedChangesAsync("starting a new project")) return;
         CloseTitleEditor();
         _player.Pause();
         _project = new MovieProject();
@@ -155,6 +173,7 @@ public sealed partial class MainWindow : Window
         _boundarySelected = false;
         _selectedBoundary = -1;
         _mediaStrips.Clear();
+        _savedSnapshot = ProjectSnapshot();
         RefreshAll();
     }
 
@@ -167,10 +186,13 @@ public sealed partial class MainWindow : Window
         if (file is null) return;
         try
         {
-            CloseTitleEditor();
             var project = JsonSerializer.Deserialize<MovieProject>(await File.ReadAllTextAsync(file.Path));
-            _project = project ?? throw new InvalidOperationException("The project file is empty.");
+            if (project is null) throw new InvalidOperationException("The project file is empty.");
+            if (!await ConfirmUnsavedChangesAsync("opening another project")) return;
+            CloseTitleEditor();
+            _project = project;
             _projectPath = file.Path;
+            _savedSnapshot = ProjectSnapshot();
             _selectedAsset = null;
             _selectedClip = -1;
             _selectedClips.Clear(); _selectedTitle = -1; _selectedMusic = -1;
@@ -190,23 +212,132 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { await ErrorAsync("Could not open project", ex); }
     }
 
-    private async void Save_Click(object sender, RoutedEventArgs e)
+    private async void Save_Click(object sender, RoutedEventArgs e) => await SaveProjectAsync();
+
+    private string ProjectSnapshot() => JsonSerializer.Serialize(_project);
+
+    private bool HasUnsavedChanges() => ProjectSnapshot() != _savedSnapshot ||
+        _titleDraft is not null && (_titleEditTarget is null ||
+        JsonSerializer.Serialize(_titleDraft) != JsonSerializer.Serialize(_titleEditTarget));
+
+    private async Task PersistProjectAsync(string path, string snapshot)
     {
+        await _saveGate.WaitAsync();
+        var temporary = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path)!,
+            $".WinMovie-save-{Guid.NewGuid():N}.tmp");
         try
         {
-            if (_projectPath is null)
-            {
-                var picker = new FileSavePicker { SuggestedFileName = "My Movie" };
-                WinRT.Interop.InitializeWithWindow.Initialize(picker, Hwnd);
-                picker.FileTypeChoices.Add("WinMovie project", new List<string> { ".winmovie" });
-                var file = await picker.PickSaveFileAsync();
-                if (file is null) return;
-                _projectPath = file.Path;
-            }
-            await File.WriteAllTextAsync(_projectPath, JsonSerializer.Serialize(_project, new JsonSerializerOptions { WriteIndented = true }));
-            Status.Text = $"Saved {System.IO.Path.GetFileName(_projectPath)}";
+            using var document = JsonDocument.Parse(snapshot);
+            var formatted = JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(temporary, formatted);
+            File.Move(temporary, path, true);
         }
-        catch (Exception ex) { await ErrorAsync("Could not save project", ex); }
+        finally
+        {
+            try { File.Delete(temporary); } catch { }
+            _saveGate.Release();
+        }
+    }
+
+    private async Task<bool> SaveProjectAsync()
+    {
+        string? path = _projectPath;
+        if (path is null)
+        {
+            var picker = new FileSavePicker { SuggestedFileName = "My Movie" };
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, Hwnd);
+            picker.FileTypeChoices.Add("WinMovie project", new List<string> { ".winmovie" });
+            var file = await picker.PickSaveFileAsync();
+            if (file is null) return false;
+            path = file.Path;
+        }
+        try
+        {
+            if (_titleDraft is not null) CommitTitleDraft();
+            var project = _project;
+            var snapshot = ProjectSnapshot();
+            await PersistProjectAsync(path, snapshot);
+            if (ReferenceEquals(_project, project))
+            {
+                _projectPath = path;
+                _savedSnapshot = snapshot;
+                Status.Text = $"Saved {System.IO.Path.GetFileName(path)}";
+            }
+            return true;
+        }
+        catch (Exception ex) { await ErrorAsync("Could not save project", ex); return false; }
+    }
+
+    private async void AutoSave_Tick(object? sender, object e)
+    {
+        var path = _projectPath;
+        if (path is null || _exporting || _titleDraft is not null || _closingPrompt) return;
+        var snapshot = ProjectSnapshot();
+        if (snapshot == _savedSnapshot) return;
+        var project = _project;
+        try
+        {
+            await PersistProjectAsync(path, snapshot);
+            if (ReferenceEquals(_project, project) && _projectPath == path)
+            {
+                _savedSnapshot = snapshot;
+                Status.Text = $"Autosaved {System.IO.Path.GetFileName(path)}";
+            }
+        }
+        catch (Exception ex) { Status.Text = $"Autosave failed: {ex.Message}"; }
+    }
+
+    private async Task<bool> ConfirmUnsavedChangesAsync(string action)
+    {
+        _autoSaveTimer.Stop();
+        await _saveGate.WaitAsync();
+        _saveGate.Release();
+        try
+        {
+            if (!HasUnsavedChanges()) return true;
+            var discardStyle = new Style(typeof(Button));
+            discardStyle.Setters.Add(new Setter(Control.BackgroundProperty, Brush("#8A3D3D")));
+            discardStyle.Setters.Add(new Setter(Control.ForegroundProperty, Brush("#FFFFFFFF")));
+            var name = _projectPath is null ? "this movie" : System.IO.Path.GetFileNameWithoutExtension(_projectPath);
+            var dialog = new ContentDialog
+            {
+                Title = "Unsaved changes",
+                Content = $"Save changes to {name} before {action}?",
+                PrimaryButtonText = "Save",
+                SecondaryButtonText = "Discard changes",
+                SecondaryButtonStyle = discardStyle,
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = Content.XamlRoot
+            };
+            var choice = await dialog.ShowAsync();
+            return choice switch
+            {
+                ContentDialogResult.Primary => await SaveProjectAsync(),
+                ContentDialogResult.Secondary => true,
+                _ => false
+            };
+        }
+        finally { _autoSaveTimer.Start(); }
+    }
+
+    private async void Window_Closing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (_closeApproved) return;
+        if (_exporting) { args.Cancel = true; return; }
+        if (!HasUnsavedChanges()) return;
+        args.Cancel = true;
+        if (_closingPrompt) return;
+        _closingPrompt = true;
+        try
+        {
+            if (await ConfirmUnsavedChangesAsync("closing WinMovie"))
+            {
+                _closeApproved = true;
+                Close();
+            }
+        }
+        finally { _closingPrompt = false; }
     }
 
     private async void Export_Click(object sender, RoutedEventArgs e)
@@ -285,7 +416,29 @@ public sealed partial class MainWindow : Window
         }
         if (failure is not null) await ErrorAsync("Could not export MP4", failure);
         else if (cancelled) Status.Text = "Export cancelled.";
-        else await MessageAsync("Export complete", $"Saved {file.Path}");
+        else await ShowExportCompleteAsync(file.Path);
+    }
+
+    private async Task ShowExportCompleteAsync(string path)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Export complete",
+            Content = new TextBlock { Text = $"Saved {path}", TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = "Open file",
+            SecondaryButtonText = "Open folder",
+            CloseButtonText = "Done",
+            XamlRoot = Content.XamlRoot
+        };
+        var choice = await dialog.ShowAsync();
+        try
+        {
+            if (choice == ContentDialogResult.Primary)
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            else if (choice == ContentDialogResult.Secondary)
+                Process.Start(new ProcessStartInfo(System.IO.Path.GetDirectoryName(path)!) { UseShellExecute = true });
+        }
+        catch (Exception ex) { await ErrorAsync("Could not open export", ex); }
     }
 
     private void CancelExport_Click(object sender, RoutedEventArgs e)
@@ -586,20 +739,29 @@ public sealed partial class MainWindow : Window
             content.Children.Add(new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
             content.Children.Add(new TextBlock { Text = $"{Time(clip.Duration)} · drag to reorder", FontSize = 11, Opacity = .7 });
             var button = new Button { Content = content, Width = 158,
-                Height = 90, HorizontalContentAlignment = HorizontalAlignment.Stretch, CanDrag = true, AllowDrop = true,
+                Height = 90, HorizontalContentAlignment = HorizontalAlignment.Stretch, AllowDrop = true,
                 Background = _selectedClips.Contains(i) ? Brush("#334E78") : Brush("#252B31") };
-            button.Click += (_, _) => SelectClip(index, ControlDown());
+            button.Click += (_, _) =>
+            {
+                if (_clipDragMoved || _suppressClipClick) return;
+                SelectClip(index, ControlDown());
+            };
+            button.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) =>
+            {
+                if (!args.GetCurrentPoint(button).Properties.IsLeftButtonPressed) return;
+                ClearClipDragMarker();
+                _clipDragSource = index;
+                _clipDragInsertion = index;
+                _clipDragOrigin = args.GetCurrentPoint(TimelineList).Position;
+                _clipDragMoved = false;
+                _suppressClipClick = false;
+            }), true);
             button.DragOver += Timeline_DragOver;
             button.Drop += async (_, args) =>
             {
                 args.Handled = true;
                 var insertion = index + (args.GetPosition(button).X >= button.ActualWidth / 2 ? 1 : 0);
                 await DropAtAsync(args, insertion);
-            };
-            button.DragStarting += (_, args) =>
-            {
-                args.Data.SetText(JsonSerializer.Serialize(new DragPayload("timeline", Index: index)));
-                args.Data.RequestedOperation = DataPackageOperation.Move;
             };
             TimelineList.Children.Add(button);
             var overlap = i > 0 && clip.TransitionIn != TransitionKind.Cut ?
@@ -609,6 +771,53 @@ public sealed partial class MainWindow : Window
         AddBoundarySlot(_project.Clips.Count);
         ProjectDuration.Text = $"{_project.Clips.Count} clips · {Time(duration)}";
         RefreshBoundaryControls();
+    }
+
+    private void TimelineClip_PointerMoved(object sender, PointerRoutedEventArgs args)
+    {
+        if (_clipDragSource < 0) return;
+        var point = args.GetCurrentPoint(TimelineList);
+        if (!point.Properties.IsLeftButtonPressed) { ResetClipDrag(); return; }
+        if (!_clipDragMoved && Math.Abs(point.Position.X - _clipDragOrigin.X) +
+            Math.Abs(point.Position.Y - _clipDragOrigin.Y) < 8) return;
+        _clipDragMoved = true;
+        _clipDragInsertion = TimelineInsertionIndex(point.Position.X);
+        ClearClipDragMarker();
+        if (_clipDragInsertion * 2 < TimelineList.Children.Count && TimelineList.Children[_clipDragInsertion * 2] is Border marker)
+        {
+            _clipDragMarker = marker;
+            _clipDragMarkerBrush = marker.Background;
+            marker.Background = Brush("#597FC2");
+        }
+    }
+
+    private void TimelineClip_PointerReleased(object sender, PointerRoutedEventArgs args)
+    {
+        if (_clipDragSource < 0) return;
+        var point = args.GetCurrentPoint(TimelineList).Position;
+        var source = _clipDragSource;
+        var insertion = _clipDragInsertion;
+        var moved = _clipDragMoved && point.Y >= -12 && point.Y <= TimelineList.ActualHeight + 12;
+        ResetClipDrag();
+        if (!moved) return;
+        _suppressClipClick = true;
+        MoveTimelineClip(source, insertion);
+        args.Handled = true;
+        DispatcherQueue.TryEnqueue(() => _suppressClipClick = false);
+    }
+
+    private void ClearClipDragMarker()
+    {
+        if (_clipDragMarker is not null && _clipDragMarkerBrush is not null)
+            _clipDragMarker.Background = _clipDragMarkerBrush;
+        _clipDragMarker = null; _clipDragMarkerBrush = null;
+    }
+
+    private void ResetClipDrag()
+    {
+        ClearClipDragMarker();
+        _clipDragSource = -1;
+        _clipDragMoved = false;
     }
 
     private void RefreshTracks()
@@ -916,19 +1125,25 @@ public sealed partial class MainWindow : Window
         save.Click += (_, _) =>
         {
             Update();
-            if (_titleEditTarget is { } existing)
-            {
-                var position = _project.Titles.IndexOf(existing);
-                if (position < 0) return;
-                _project.Titles[position] = draft;
-                _selectedTitle = position;
-            }
-            else { _project.Titles.Add(draft); _selectedTitle = _project.Titles.Count - 1; }
-            CloseTitleEditor(); RefreshTracks(); RefreshInspector(); InvalidateTimelinePreview();
+            CommitTitleDraft();
         };
         cancel.Click += (_, _) => { CloseTitleEditor(); RefreshInspector(); };
         TitleEditorContent.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { save, cancel } });
         ApplyTitlePreview(draft);
+    }
+
+    private void CommitTitleDraft()
+    {
+        if (_titleDraft is not { } draft) return;
+        if (_titleEditTarget is { } existing)
+        {
+            var position = _project.Titles.IndexOf(existing);
+            if (position < 0) return;
+            _project.Titles[position] = draft;
+            _selectedTitle = position;
+        }
+        else { _project.Titles.Add(draft); _selectedTitle = _project.Titles.Count - 1; }
+        CloseTitleEditor(); RefreshTracks(); RefreshInspector(); InvalidateTimelinePreview();
     }
 
     private async void AddMusic_Click(object sender, RoutedEventArgs e)
@@ -1160,9 +1375,10 @@ public sealed partial class MainWindow : Window
         await DropAtAsync(e, TimelineInsertionIndex(e));
     }
 
-    private int TimelineInsertionIndex(DragEventArgs e)
+    private int TimelineInsertionIndex(DragEventArgs e) => TimelineInsertionIndex(e.GetPosition(TimelineList).X);
+
+    private int TimelineInsertionIndex(double x)
     {
-        var x = e.GetPosition(TimelineList).X;
         var left = 0d;
         for (var i = 0; i < TimelineList.Children.Count; i++)
         {
@@ -1188,15 +1404,7 @@ public sealed partial class MainWindow : Window
         }
         else if (payload.Kind == "timeline" && payload.Index >= 0 && payload.Index < _project.Clips.Count)
         {
-            var source = payload.Index;
-            var clip = _project.Clips[source];
-            _project.Clips.RemoveAt(source);
-            if (source < index) index--;
-            index = Math.Clamp(index, 0, _project.Clips.Count);
-            _project.Clips.Insert(index, clip);
-            SelectClip(index);
-            InvalidateTimelinePreview();
-            Status.Text = "Clip moved.";
+            MoveTimelineClip(payload.Index, index);
         }
         else if (payload.Kind == "transition")
         {
@@ -1204,6 +1412,20 @@ public sealed partial class MainWindow : Window
             ApplyTransition(payload.Transition);
         }
         e.Handled = true;
+    }
+
+    private void MoveTimelineClip(int source, int insertion)
+    {
+        if (source < 0 || source >= _project.Clips.Count) return;
+        var destination = source < insertion ? insertion - 1 : insertion;
+        if (destination == source) return;
+        var clip = _project.Clips[source];
+        _project.Clips.RemoveAt(source);
+        destination = Math.Clamp(destination, 0, _project.Clips.Count);
+        _project.Clips.Insert(destination, clip);
+        SelectClip(destination);
+        InvalidateTimelinePreview();
+        Status.Text = "Clip moved.";
     }
 
     private static bool ControlDown() =>

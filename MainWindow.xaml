@@ -18,7 +18,7 @@
             <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                 <Image Source="Assets/WinMovie.png" Width="22" Height="22" />
                 <TextBlock Text="WinMovie" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <TextBlock Text="·  1.0 Beta 6" Opacity="0.6" VerticalAlignment="Center" />
+                <TextBlock Text="·  1.0 Beta 7" Opacity="0.6" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>
 
@@ -180,9 +180,12 @@
         </Grid>
     </Grid>
     </ContentControl>
-    <Grid x:Name="ExportOverlay" Visibility="Collapsed" Background="#D90B111B" IsHitTestVisible="True">
+    <Grid x:Name="ExportOverlay" Visibility="Collapsed" IsHitTestVisible="True">
+        <Grid.Background>
+            <AcrylicBrush TintColor="#101925" TintOpacity="0.78" TintLuminosityOpacity="0.35" FallbackColor="#E6101925" />
+        </Grid.Background>
         <Border Width="420" Padding="28" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                Background="#FF202B3A" BorderBrush="#FF44556B" BorderThickness="1">
             <StackPanel Spacing="16">
                 <TextBlock Text="Exporting your movie" FontSize="20" FontWeight="SemiBold" />
                 <TextBlock x:Name="ExportOverlayMessage" Text="Preparing clips…" TextWrapping="Wrap" />

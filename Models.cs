@@ -34,13 +34,13 @@ public sealed class TimelineClip
     public bool FadeOut { get; set; }
     public double FadeInDuration { get; set; } = .35;
     public double FadeOutDuration { get; set; } = .35;
-    public double Duration => Math.Max(0, Out - In) / Math.Max(.01, Speed);
+    [JsonIgnore] public double Duration => Math.Max(0, Out - In) / Math.Max(.01, Speed);
 }
 
 public sealed class TitleItem
 {
     public double Start { get; set; }
-    public double Duration { get; set; } = 3;
+    public double Duration { get; set; } = 5;
     public string Text { get; set; } = "Your title";
     public TitlePreset Preset { get; set; } = TitlePreset.Center;
     public string Font { get; set; } = "Segoe UI";
@@ -71,7 +71,7 @@ public sealed class MusicClip
     public double Volume { get; set; } = .45;
     public bool FadeOut { get; set; } = true;
     public double FadeOutDuration { get; set; } = 2;
-    public double Duration => Math.Max(0, Out - In);
+    [JsonIgnore] public double Duration => Math.Max(0, Out - In);
 }
 
 public sealed class MovieProject

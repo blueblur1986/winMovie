@@ -1,51 +1,61 @@
 # WinMovie
 
-A small, native WinUI 3 video editor built around the quick editing flow of iMovie '08–'11.
+A native Windows video editor inspired by the fast, simple editing flow of iMovie '08–'11: skim footage, select ranges, and build your movie.
 
-Current preview: **v1.0-beta.7**. The next feature iteration will be beta 8; release candidates and the stable release will be named when the maintainer decides they are ready.
+Current preview: **v1.0-beta.8**. The next feature iteration is beta 9. Releases remain betas until the maintainer chooses a release candidate or stable version.
 
-![WinMovie editing interface with source filmstrips, preview, title, video, and music tracks](Assets/WinMovie-beta7-screenshot.jpg)
+![WinMovie with source filmstrips, video preview, and aligned title, video, and music tracks](Assets/WinMovie-screenshot.jpg)
 
-## What works
+## Make a movie
 
-- Import MP4, MOV, MKV, AVI, M4V, and WebM video through a file picker.
-- Each imported clip has a six-frame filmstrip in the upper-left media bin. Hover to skim, drag across it to select a range, or drag a yellow edge to refine the range. Drag the yellow selection itself onto the timeline, or use the Add button. The same source can be used repeatedly.
-- Timeline clips show filmstrip previews. Drag a clip to the highlighted insertion point to reorder it, or use the arrow buttons. Ctrl-click clips or press Ctrl+A while the timeline is active to select multiple clips for shared settings or deletion. Trimming applies to the primary clip.
-- Click a timeline boundary and choose Cut, Dissolve, Fade through Black/White, Wipe Left/Right, or Slide Left/Right from the illustrated menu. Set its duration in seconds. Press Delete to clear a selected transition or remove a selected clip.
-- Add independent titles on the compact track above the main timeline, set start and duration, drag to change timing, and choose placement, any installed font, text/background colors through RGB/HEX pickers, opacity, adjustable blurred shadow, pixel outline, and fade in/out. Titles can span clip boundaries. The title editor stays alongside the video and previews changes with the same font rendering used for export. Its text field spell checks as you type. Click the title in the preview to edit its text. New titles start at the timeline playhead and last five seconds by default. Existing clip titles remain supported.
-- Add background music on the compact track below the main timeline, set its timeline start, source trim, volume, and optional fade out. Drag its card to change its start time.
-- Set clip volume from 0 to 4×, normalize audio, and enter a speed percentage from 25% to 400% in a dialog that compares original and new duration and offers a keep-pitch choice.
-- Press Space over a source filmstrip to play from the hovered frame and press it again to pause. With the timeline active, Space plays or pauses it; key repeat is ignored and Space is handled before focused buttons. Save and reopen `.winmovie` projects. WinMovie prompts to save or discard changes before closing, starting a new movie, or opening another project; saved projects autosave every 30 seconds when changed. Timeline playback uses a low-resolution background render that includes transitions, titles, music, speed, fades, and audio processing. Unchanged clip segments are cached between previews, and the app tries a detected hardware encoder first.
-- Export H.264/AAC MP4 at a chosen size from 480p through 4K, limited by the smallest source video in the timeline. The app probes NVIDIA, Intel, and AMD encoders and chooses an available hardware encoder automatically, with software fallback. The suggested filename matches a saved project's name. A modal progress overlay supports cancellation; when export finishes, open the MP4 in your default player or open its folder.
+1. **Import media.** Hover over a filmstrip to skim. Drag across frames to select a range; adjust its yellow edges for precision.
+2. **Add your selection.** Drag the yellow range into the movie or choose **Add to movie**. Drag clips to reorder them. Right-click a clip for settings, keyboard-accessible reordering, or removal.
+3. **Refine the edit.** All three tracks share a ruler, zoom level, and horizontal scroll position. Click the ruler to seek. Click a transition marker to choose an illustrated transition and its duration. Ctrl-click clips or Ctrl+A in the movie to change shared settings.
+4. **Add titles and music.** Titles sit above video; music sits below it. Drag either to change its start time. Titles have live previews, installed fonts, RGB/HEX color pickers, adjustable shadow and outline, and fades. Apply and Cancel stay visible while editing. Switching to another clip applies title edits; Undo can restore them.
+5. **Save and export.** Saved projects autosave every 30 seconds after edits. Unsaved changes prompt before closing, starting a new movie, or opening another project. Export MP4 offers source-limited sizes from 480p to 4K, detects a working hardware encoder, and shows progress and cancellation. Open the completed MP4 in your default player or open its folder.
 
-Source files remain in place, so moving them will break a saved project's media links.
+**Clip settings** contains source trim, a speed percentage with a duration comparison and keep-pitch option, volume up to 4×, normalization, and fades. Titles and music have independent start times and durations. Older clip titles become independent title items when a project is opened.
+
+Source files remain linked by path. If a video moves, right-click its missing media card and choose **Locate file**. Exports cannot overwrite files linked into the movie.
+
+## Keyboard controls
+
+| Shortcut | Action |
+| --- | --- |
+| Ctrl+I / Ctrl+O / Ctrl+N | Import video / open project / new movie |
+| Ctrl+S | Save project |
+| Ctrl+Z | Undo an edit; text fields retain their native text undo |
+| Ctrl+Shift+Z or Ctrl+Y | Redo |
+| Space | Play/pause the movie, or play source footage from the hovered position |
+| E | Add the current source range |
+| Ctrl-click / Ctrl+A | Select multiple clips / all movie clips |
+| Delete | Remove selected clips, title, music, or transition; editable fields retain normal text deletion |
 
 ## Build and run
 
-Requires Windows 10 2004 or later (Windows 11 recommended), the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0), and [FFmpeg](https://ffmpeg.org/download.html) with `ffmpeg` and `ffprobe` on `PATH`. The project uses Windows App SDK 1.8 and builds as an unpackaged, self-contained WinUI 3 app.
+Requires Windows 10 2004 or later (Windows 11 recommended), the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0), and [FFmpeg](https://ffmpeg.org/download.html) with `ffmpeg` and `ffprobe` on `PATH`. WinMovie uses Windows App SDK 1.8 and runs as an unpackaged, self-contained WinUI 3 application.
 
 ```powershell
 dotnet restore WinMovie.csproj
 dotnet run --project WinMovie.csproj -p:Platform=x64
 ```
 
-For a distributable folder:
+Build a distributable folder:
 
 ```powershell
 dotnet publish WinMovie.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64
 ```
 
-The output is under `bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/publish/`. FFmpeg is a separate runtime dependency; put its executables on `PATH` on the target PC.
+Keep the complete publish folder together, including `WinMovie.pri` beside `WinMovie.exe`. FFmpeg is a separate runtime dependency. Windows x64 ZIP builds are attached to GitHub Releases.
 
-Keep the complete publish folder together when distributing the app. In particular, `WinMovie.pri` must sit beside `WinMovie.exe`; the project checks for it during publish.
+Run the smoke and regression checks:
 
-## Editing flow
+```powershell
+dotnet run --project tests/WinMovie.ExportSmoke.csproj
+```
 
-1. Import one or more videos.
-2. Skim an imported video's filmstrip and drag to highlight a range. Drag inside the yellow range to a timeline card or `+` boundary, or click **Add range to timeline**.
-3. Drag timeline clips to reorder them. Click a boundary for the transition menu and duration. Ctrl-click or Ctrl+A to apply shared settings. Add titles and music on their own tracks; click their cards for timing and style controls, or drag them to change their start time. Use Delete on selected clips, a title, music, or a transition.
-4. Let the timeline preview finish rendering in the background, then play it. Save the project and use **Export MP4** to pick a source-limited resolution.
+See the [beta 8 debugging notes](docs/BETA8-ENGINEERING.md) for the failure causes, fixes, and verification scope.
 
-### Current limits
+## Current limits
 
-There is no effects browser or image clip support yet. Timeline preview is rendered at 480p and still has to join clips when transitions, titles, or music change. Export uses 30 fps and stereo 48 kHz audio. Music and source media remain linked by their file paths.
+Movie previews use a background render at 480p; edits can require a short wait before complete playback is ready. Unchanged clip segments are cached. Export is H.264/AAC MP4 at 30 fps with stereo 48 kHz audio. The app probes NVIDIA, Intel, and AMD encoders and falls back to software. There is no effects browser, still-image clip support, or media embedding in project files yet.

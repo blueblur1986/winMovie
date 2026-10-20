@@ -1,198 +1,201 @@
-<Window
-    x:Class="WinMovie.MainWindow"
+<Window x:Class="WinMovie.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:media="using:Microsoft.UI.Xaml.Controls">
-    <Grid>
-    <ContentControl x:Name="EditorHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
-    <Grid x:Name="EditorSurface" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" RowSpacing="0">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="40" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="340" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <Grid x:Name="AppTitleBar" Grid.Row="0" Background="#18212D" Padding="16,0,145,0">
-            <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-                <Image Source="Assets/WinMovie.png" Width="22" Height="22" />
-                <TextBlock Text="WinMovie" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <TextBlock Text="·  1.0 Beta 7" Opacity="0.6" VerticalAlignment="Center" />
-            </StackPanel>
-        </Grid>
-
-        <Grid Grid.Row="1" Padding="18,12" ColumnSpacing="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,0,18,0" VerticalAlignment="Center">
-                <TextBlock Text="Edit" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
-            </StackPanel>
-            <Button Grid.Column="1" Content="Import media" Click="Import_Click" />
-            <Button Grid.Column="2" Content="New" Click="New_Click" />
-            <Button Grid.Column="3" Content="Open project" Click="Open_Click" />
-            <Button Grid.Column="5" Content="Save project" Click="Save_Click" />
-            <Button x:Name="ExportButton" Grid.Column="6" Content="Export MP4" Style="{StaticResource AccentButtonStyle}" Click="Export_Click" />
-        </Grid>
-
-        <Grid Grid.Row="2" Padding="18,16" ColumnSpacing="18">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2.5*" MinWidth="320" />
-                <ColumnDefinition Width="3*" MinWidth="420" />
-            </Grid.ColumnDefinitions>
-
-            <Grid x:Name="MediaPanel" Grid.Column="0" RowSpacing="10" SizeChanged="MediaPanel_SizeChanged">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid KeyboardAcceleratorPlacementMode="Hidden">
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="S" Modifiers="Control" Invoked="EditorShortcut_Invoked"/>
+            <KeyboardAccelerator Key="I" Modifiers="Control" Invoked="EditorShortcut_Invoked"/>
+            <KeyboardAccelerator Key="O" Modifiers="Control" Invoked="EditorShortcut_Invoked"/>
+            <KeyboardAccelerator Key="N" Modifiers="Control" Invoked="EditorShortcut_Invoked"/>
+            <KeyboardAccelerator Key="Z" Modifiers="Control" Invoked="EditorShortcut_Invoked"/>
+            <KeyboardAccelerator Key="Y" Modifiers="Control" Invoked="EditorShortcut_Invoked"/>
+            <KeyboardAccelerator Key="Z" Modifiers="Control,Shift" Invoked="EditorShortcut_Invoked"/>
+        </Grid.KeyboardAccelerators>
+        <ContentControl x:Name="EditorHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+            <Grid x:Name="EditorSurface" Background="#13191F">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="40"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="282"/>
+                    <RowDefinition Height="30"/>
                 </Grid.RowDefinitions>
-                <Grid>
-                    <TextBlock Text="Media" FontSize="17" FontWeight="SemiBold" />
-                    <TextBlock x:Name="MediaCount" HorizontalAlignment="Right" Opacity="0.7" />
+                <Grid x:Name="AppTitleBar" Background="#18212D" Padding="16,0,145,0">
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Image Source="Assets/WinMovie.png" Width="22" Height="22"/>
+                        <TextBlock Text="WinMovie" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="1.0 Beta 8" Opacity="0.55" VerticalAlignment="Center"/>
+                    </StackPanel>
                 </Grid>
-                <ScrollViewer x:Name="MediaScroller" Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <StackPanel x:Name="MediaList" Spacing="7" />
-                </ScrollViewer>
-                <TextBlock Grid.Row="2" Text="Drag across frames to select. Drag the yellow selection into the timeline." TextWrapping="Wrap" FontSize="12" Opacity="0.7" />
-                <Grid Grid.Row="3" ColumnSpacing="10">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <TextBlock x:Name="RangeLabel" VerticalAlignment="Center" Text="Import a video to begin" />
-                    <Button Grid.Column="1" Content="Add range to timeline  →" Style="{StaticResource AccentButtonStyle}" Click="AddRange_Click" />
-                </Grid>
-            </Grid>
-
-            <ScrollViewer x:Name="TitleEditorScroller" Grid.Column="0" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-                <StackPanel x:Name="TitleEditorContent" Spacing="10" Padding="0,0,8,0" />
-            </ScrollViewer>
-
-            <Grid Grid.Column="1" RowSpacing="10">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <Grid>
-                    <TextBlock Text="Preview" FontSize="17" FontWeight="SemiBold" />
-                    <TextBlock x:Name="PreviewMode" HorizontalAlignment="Right" Opacity="0.7" />
-                </Grid>
-                <Grid x:Name="PreviewHost" Grid.Row="1" Background="#090B0D" MinHeight="250" SizeChanged="PreviewHost_SizeChanged">
-                    <media:MediaPlayerElement x:Name="Preview" AreTransportControlsEnabled="False" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
-                    <Border x:Name="TitleBackgroundPreview" Visibility="Collapsed" Height="100" HorizontalAlignment="Stretch" VerticalAlignment="Center" IsHitTestVisible="False" />
-                    <Image x:Name="TitleGraphicPreview" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Fill" Tapped="TitleGraphic_Tapped" />
-                    <TextBox x:Name="TitleOverlay" Visibility="Collapsed" TextChanged="TitleOverlay_TextChanged"
-                             HorizontalAlignment="Center" VerticalAlignment="Center" Width="420"
-                             FontSize="27" FontWeight="SemiBold" TextAlignment="Center"
-                             PlaceholderText="Click to edit title" Background="Transparent" BorderThickness="0" />
-                </Grid>
-                <Grid Grid.Row="2" ColumnSpacing="8">
+                <CommandBar Grid.Row="1" DefaultLabelPosition="Right" Background="#1C242D" IsDynamicOverflowEnabled="True">
+                    <CommandBar.Content>
+                        <StackPanel Margin="16,4,12,4" VerticalAlignment="Center" MaxWidth="200">
+                            <TextBlock x:Name="ProjectNameLabel" Text="My Movie" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="SaveStateLabel" Text="Not saved yet" FontSize="11" Opacity="0.65"/>
+                        </StackPanel>
+                    </CommandBar.Content>
+                    <AppBarButton x:Name="FileButton" Label="File" Icon="Folder">
+                        <AppBarButton.Flyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem Text="New movie" Click="New_Click"/>
+                                <MenuFlyoutItem Text="Open project…" Click="Open_Click"/>
+                                <MenuFlyoutItem Text="Save project" Click="Save_Click"/>
+                            </MenuFlyout>
+                        </AppBarButton.Flyout>
+                    </AppBarButton>
+                    <AppBarButton x:Name="ImportButton" Label="Import media" Icon="Add" Click="Import_Click" ToolTipService.ToolTip="Import video (Ctrl+I)"/>
+                    <AppBarButton x:Name="SaveButton" Label="Save" Icon="Save" Click="Save_Click" ToolTipService.ToolTip="Save project (Ctrl+S)"/>
+                    <AppBarSeparator/>
+                    <AppBarButton x:Name="UndoButton" Label="Undo" Icon="Undo" Click="Undo_Click" IsEnabled="False" ToolTipService.ToolTip="Undo (Ctrl+Z)"/>
+                    <AppBarButton x:Name="RedoButton" Label="Redo" Icon="Redo" Click="Redo_Click" IsEnabled="False" ToolTipService.ToolTip="Redo (Ctrl+Shift+Z)"/>
+                    <AppBarSeparator/>
+                    <AppBarButton x:Name="ExportButton" Label="Export MP4" Icon="SaveLocal" Click="Export_Click"/>
+                </CommandBar>
+                <Grid x:Name="WorkspaceGrid" Grid.Row="2" Padding="16,12" ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="1*" MinWidth="250"/>
+                        <ColumnDefinition Width="1.15*" MinWidth="300"/>
                     </Grid.ColumnDefinitions>
-                    <Button x:Name="PlayButton" Content="▶ Play" Click="Play_Click" />
-                    <Slider x:Name="PreviewSeek" Grid.Column="1" Minimum="0" Maximum="100" ValueChanged="PreviewSeek_ValueChanged" />
-                    <TextBlock x:Name="PreviewTime" Grid.Column="2" Text="0:00" VerticalAlignment="Center" />
+                    <Grid x:Name="MediaPanel" RowSpacing="8" SizeChanged="MediaPanel_SizeChanged">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="Source media" FontSize="17" FontWeight="SemiBold"/>
+                            <ProgressRing x:Name="MediaLoading" Grid.Column="1" IsActive="False" Width="18" Height="18" AutomationProperties.Name="Loading media thumbnails"/>
+                            <TextBlock x:Name="MediaCount" Grid.Column="2" Opacity="0.6" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Grid Grid.Row="1">
+                            <ScrollViewer x:Name="MediaScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled">
+                                <StackPanel x:Name="MediaList" Spacing="8"/>
+                            </ScrollViewer>
+                            <StackPanel x:Name="EmptyMediaPanel" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8" IsHitTestVisible="False">
+                                <FontIcon Glyph="&#xE714;" FontSize="28" Opacity="0.45" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Start with your footage" FontSize="16" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Choose Import media to add video.&#x0a;Hover to skim. Drag across frames to select." TextAlignment="Center" Opacity="0.6" TextWrapping="Wrap" MaxWidth="280"/>
+                            </StackPanel>
+                        </Grid>
+                        <Grid Grid.Row="2" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="RangeLabel" Text="Select footage to begin" FontSize="12" Opacity="0.75" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                            <Button x:Name="AddRangeButton" Grid.Column="1" Content="Add to movie" Style="{StaticResource AccentButtonStyle}" Click="AddRange_Click" ToolTipService.ToolTip="Add the selected range to the end of your movie (E)"/>
+                        </Grid>
+                    </Grid>
+                    <Grid x:Name="TitleEditorPanel" Visibility="Collapsed" RowSpacing="8">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="TitleEditorHeading" Text="Title" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Content="Apply" Click="ApplyTitle_Click" Style="{StaticResource AccentButtonStyle}"/>
+                            <Button Grid.Column="2" Content="Cancel" Click="CancelTitle_Click"/>
+                        </Grid>
+                        <ScrollViewer x:Name="TitleEditorScroller" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="TitleEditorContent" Spacing="10" Padding="0,0,8,8"/>
+                        </ScrollViewer>
+                    </Grid>
+                    <Grid Grid.Column="1" RowSpacing="8">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <Grid>
+                            <TextBlock Text="Preview" FontSize="17" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="PreviewMode" HorizontalAlignment="Right" MaxWidth="250" TextTrimming="CharacterEllipsis" Opacity="0.65" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Grid x:Name="PreviewHost" Grid.Row="1" Background="#080B0F" MinHeight="100" SizeChanged="PreviewHost_SizeChanged">
+                            <MediaPlayerElement x:Name="Preview" AreTransportControlsEnabled="False" Stretch="Uniform"/>
+                            <Border x:Name="TitleBackgroundPreview" Visibility="Collapsed" Height="100" HorizontalAlignment="Stretch" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                            <Image x:Name="TitleGraphicPreview" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Fill" Tapped="TitleGraphic_Tapped" AutomationProperties.Name="Edit title in preview"/>
+                            <TextBox x:Name="TitleOverlay" Visibility="Collapsed" TextChanged="TitleOverlay_TextChanged" HorizontalAlignment="Center" VerticalAlignment="Center" Width="420" FontSize="27" TextAlignment="Center" PlaceholderText="Click to edit title" Background="Transparent" BorderThickness="0"/>
+                        </Grid>
+                        <Grid Grid.Row="2" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Button x:Name="PlayButton" Content="▶ Play" Click="Play_Click" ToolTipService.ToolTip="Play or pause (Space)"/>
+                            <Slider x:Name="PreviewSeek" Grid.Column="1" Minimum="0" Maximum="100" ValueChanged="PreviewSeek_ValueChanged" AutomationProperties.Name="Preview position in seconds"/>
+                            <TextBlock x:Name="PreviewTime" Grid.Column="2" Text="0:00" VerticalAlignment="Center" MinWidth="38"/>
+                        </Grid>
+                        <Grid Grid.Row="3" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Spacing="4">
+                                <TextBlock x:Name="PreviewRenderLabel" Text="Your movie preview will appear here." FontSize="11" Opacity="0.65" TextTrimming="CharacterEllipsis"/>
+                                <ProgressBar x:Name="PreviewRenderProgress" Visibility="Collapsed" Minimum="0" Maximum="1" Height="3" AutomationProperties.Name="Preparing movie preview"/>
+                            </StackPanel>
+                            <Button x:Name="RetryPreviewButton" Grid.Column="1" Visibility="Collapsed" Content="Retry" Click="RetryPreview_Click"/>
+                        </Grid>
+                    </Grid>
                 </Grid>
-                <TextBlock Grid.Row="3" Text="Select a timeline clip to edit it. Timeline playback uses a background-rendered preview." TextWrapping="Wrap" FontSize="12" Opacity="0.7" />
+                <Grid x:Name="TimelinePanel" Grid.Row="3" Background="#1C242D" Padding="16,8" RowSpacing="6">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="Movie" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="ProjectDuration" Opacity="0.6" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Button x:Name="ClipSettingsButton" Content="Clip settings" IsEnabled="False">
+                                <Button.Flyout><Flyout Placement="Top">
+                                    <ScrollViewer MaxHeight="430" VerticalScrollBarVisibility="Auto">
+                                        <StackPanel Spacing="10" Width="280">
+                                            <TextBlock x:Name="ClipSettingsHeading" Text="Clip settings" FontSize="18" FontWeight="SemiBold"/>
+                                            <TextBlock Text="Trim source (seconds)"/>
+                                            <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                                <NumberBox x:Name="TrimInBox" Header="From" Minimum="0" SmallChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="Trim_ValueChanged"/>
+                                                <NumberBox x:Name="TrimOutBox" Grid.Column="1" Header="To" Minimum="0" SmallChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="Trim_ValueChanged"/>
+                                            </Grid>
+                                            <Button x:Name="SpeedButton" Content="Speed: 100%…" Click="Speed_Click"/>
+                                            <TextBlock x:Name="VolumeLabel" Text="Volume · 100%"/>
+                                            <Slider x:Name="VolumeSlider" Minimum="0" Maximum="4" StepFrequency="0.05" ValueChanged="InspectorValue_Changed" AutomationProperties.Name="Clip volume multiplier"/>
+                                            <CheckBox x:Name="NormalizeBox" Content="Normalize loudness" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed"/>
+                                            <CheckBox x:Name="FadeInBox" Content="Fade clip in" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed"/>
+                                            <CheckBox x:Name="FadeOutBox" Content="Fade clip out" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed"/>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </Flyout></Button.Flyout>
+                            </Button>
+                            <Button x:Name="RemoveSelectionButton" Content="Remove" Click="Remove_Click" IsEnabled="False" ToolTipService.ToolTip="Remove selection (Delete). Undo with Ctrl+Z."/>
+                            <Button x:Name="TransitionSettingsButton" Content="Transition" IsEnabled="False">
+                                <Button.Flyout><Flyout Placement="Top">
+                                    <StackPanel Spacing="12" Width="260">
+                                        <TextBlock x:Name="BoundaryLabel" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                        <ComboBox x:Name="TransitionCombo" HorizontalAlignment="Stretch" PlaceholderText="Choose transition" SelectionChanged="TransitionCombo_SelectionChanged" AutomationProperties.Name="Selected transition"/>
+                                        <NumberBox x:Name="TransitionSeconds" Header="Duration (in seconds)" SpinButtonPlacementMode="Compact" Minimum="0.05" Maximum="10" SmallChange="0.1" ValueChanged="TransitionSeconds_ValueChanged"/>
+                                    </StackPanel>
+                                </Flyout></Button.Flyout>
+                            </Button>
+                            <TextBlock Text="Zoom" VerticalAlignment="Center" Opacity="0.6" FontSize="11"/>
+                            <Slider x:Name="TimelineZoom" Width="100" Minimum="24" Maximum="160" Value="65" ValueChanged="TimelineZoom_ValueChanged" AutomationProperties.Name="Timeline zoom"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <Grid Grid.Row="1" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid Margin="0,0,0,16"><Grid.RowDefinitions><RowDefinition Height="24"/><RowDefinition Height="44"/><RowDefinition Height="84"/><RowDefinition Height="44"/></Grid.RowDefinitions>
+                            <Button x:Name="AddTitleButton" Grid.Row="1" Content="＋ Title" Click="AddTitle_Click" Padding="6,3" VerticalAlignment="Center" ToolTipService.ToolTip="Add a title at the playhead"/>
+                            <TextBlock Grid.Row="2" Text="Video" VerticalAlignment="Center" Opacity="0.6"/>
+                            <Button x:Name="AddMusicButton" Grid.Row="3" Content="＋ Music" Click="AddMusic_Click" Padding="6,3" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ScrollViewer x:Name="TimelineScroller" Grid.Column="1" HorizontalScrollBarVisibility="Visible" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
+                            <Grid x:Name="TimelineTracks" Width="800" Height="196" HorizontalAlignment="Left">
+                                <Grid.RowDefinitions><RowDefinition Height="24"/><RowDefinition Height="44"/><RowDefinition Height="84"/><RowDefinition Height="44"/></Grid.RowDefinitions>
+                                <Canvas x:Name="TimelineRuler" Height="24" Background="Transparent" PointerPressed="TimelineRuler_PointerPressed"/>
+                                <Canvas x:Name="TitleTrackCanvas" Grid.Row="1" Height="44" Background="#202B3C"/>
+                                <Canvas x:Name="TimelineList" Grid.Row="2" Height="84" Background="#131B23"/>
+                                <Canvas x:Name="MusicTrackCanvas" Grid.Row="3" Height="44" Background="#1B3234"/>
+                                <TextBlock x:Name="EmptyTimelineHint" Grid.Row="2" Text="Drag a selected source range here, or choose Add to movie." Margin="20,0" VerticalAlignment="Center" Opacity="0.55" IsHitTestVisible="False"/>
+                                <Border x:Name="TimelinePlayhead" Grid.RowSpan="4" Width="2" Background="#C7DFFF" HorizontalAlignment="Left" IsHitTestVisible="False"/>
+                            </Grid>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+                <TextBlock x:Name="Status" Grid.Row="4" Text="Ready" FontSize="11" Opacity="0.65" VerticalAlignment="Center" Margin="16,0" TextTrimming="CharacterEllipsis" AutomationProperties.LiveSetting="Polite"/>
             </Grid>
-        </Grid>
-
-        <Grid x:Name="TimelinePanel" Grid.Row="3" Padding="18,12" RowSpacing="7" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" AllowDrop="True" DragOver="Timeline_DragOver" Drop="Timeline_Drop">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="46" />
-                <RowDefinition Height="96" />
-                <RowDefinition Height="46" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-            <Grid>
-                <TextBlock Text="Timeline" FontSize="17" FontWeight="SemiBold" />
-                <TextBlock x:Name="ProjectDuration" HorizontalAlignment="Right" Opacity="0.7" />
-            </Grid>
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <TextBlock Text="Transitions" VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.7" />
-                <ComboBox x:Name="TransitionCombo" Width="185" PlaceholderText="Choose transition" SelectionChanged="TransitionCombo_SelectionChanged" />
-                <TextBlock x:Name="BoundaryLabel" VerticalAlignment="Center" Margin="14,0,0,0" Opacity="0.7" />
-                <TextBlock Text="Duration (in seconds)" VerticalAlignment="Center" Margin="14,0,0,0" Opacity="0.7" />
-                <NumberBox x:Name="TransitionSeconds" Width="84" SpinButtonPlacementMode="Compact" Minimum="0.05" Maximum="10" SmallChange="0.1" ValueChanged="TransitionSeconds_ValueChanged" />
-                <TextBlock Text="Ctrl-click clips or Ctrl+A for batch edits. Delete removes the selection." VerticalAlignment="Center" Opacity="0.55" FontSize="11" Margin="15,0,0,0" />
-            </StackPanel>
-            <Grid Grid.Row="2" ColumnSpacing="8">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <StackPanel Spacing="4" Width="130">
-                    <TextBlock Text="Titles" FontWeight="SemiBold" />
-                    <Button Content="+ Add title" Click="AddTitle_Click" />
-                </StackPanel>
-                <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
-                    <Canvas x:Name="TitleTrackCanvas" Height="40" Width="400" Background="#202838" AllowDrop="True" DragOver="Track_DragOver" Drop="TitleTrack_Drop" />
-                </ScrollViewer>
-            </Grid>
-            <ScrollViewer x:Name="TimelineScroller" Grid.Row="3" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled" AllowDrop="True" DragOver="Timeline_DragOver" Drop="Timeline_Drop">
-                <StackPanel x:Name="TimelineList" Orientation="Horizontal" Spacing="4" MinWidth="600" Background="#1B232C" AllowDrop="True" DragOver="Timeline_DragOver" Drop="Timeline_Drop" />
-            </ScrollViewer>
-            <Grid Grid.Row="4" ColumnSpacing="8">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <StackPanel Spacing="4" Width="130">
-                    <TextBlock Text="Music" FontWeight="SemiBold" />
-                    <Button Content="+ Add music" Click="AddMusic_Click" />
-                </StackPanel>
-                <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
-                    <Canvas x:Name="MusicTrackCanvas" Height="40" Width="400" Background="#1F3034" AllowDrop="True" DragOver="Track_DragOver" Drop="MusicTrack_Drop" />
-                </ScrollViewer>
-            </Grid>
-            <ScrollViewer Grid.Row="5" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
-                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                    <TextBlock Text="Clip" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <Button Content="←" Click="MoveLeft_Click" ToolTipService.ToolTip="Move clip left" />
-                    <Button Content="→" Click="MoveRight_Click" ToolTipService.ToolTip="Move clip right" />
-                    <Button Content="Remove" Click="Remove_Click" />
-                    <TextBlock Text="Trim from" VerticalAlignment="Center" />
-                    <NumberBox x:Name="TrimInBox" Width="85" Minimum="0" SmallChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="Trim_ValueChanged" />
-                    <TextBlock Text="to" VerticalAlignment="Center" />
-                    <NumberBox x:Name="TrimOutBox" Width="85" Minimum="0" SmallChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="Trim_ValueChanged" />
-                    <CheckBox x:Name="FadeInBox" Content="Fade in" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed" />
-                    <CheckBox x:Name="FadeOutBox" Content="Fade out" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed" />
-                    <TextBlock Text="Clip title" VerticalAlignment="Center" />
-                    <ComboBox x:Name="TitleBox" Width="115" SelectionChanged="InspectorSelection_Changed">
-                        <ComboBoxItem Content="None" /><ComboBoxItem Content="Center" /><ComboBoxItem Content="Lower third" /><ComboBoxItem Content="Opening" />
-                    </ComboBox>
-                    <TextBlock Text="Speed" VerticalAlignment="Center" />
-                    <Button x:Name="SpeedButton" Content="100%…" Click="Speed_Click" />
-                    <TextBlock Text="Volume" VerticalAlignment="Center" />
-                    <Slider x:Name="VolumeSlider" Width="105" Minimum="0" Maximum="4" StepFrequency="0.05" ValueChanged="InspectorValue_Changed" />
-                    <CheckBox x:Name="NormalizeBox" Content="Normalize" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed" />
-                </StackPanel>
-            </ScrollViewer>
-        </Grid>
-
-        <Grid Grid.Row="4" Padding="18,6">
-            <TextBlock x:Name="Status" Text="Ready" Opacity="0.7" />
-        </Grid>
-    </Grid>
-    </ContentControl>
-    <Grid x:Name="ExportOverlay" Visibility="Collapsed" IsHitTestVisible="True">
-        <Grid.Background>
-            <AcrylicBrush TintColor="#101925" TintOpacity="0.78" TintLuminosityOpacity="0.35" FallbackColor="#E6101925" />
-        </Grid.Background>
-        <Border Width="420" Padding="28" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center"
-                Background="#FF202B3A" BorderBrush="#FF44556B" BorderThickness="1">
-            <StackPanel Spacing="16">
-                <TextBlock Text="Exporting your movie" FontSize="20" FontWeight="SemiBold" />
-                <TextBlock x:Name="ExportOverlayMessage" Text="Preparing clips…" TextWrapping="Wrap" />
-                <ProgressBar x:Name="ExportOverlayProgress" Height="8" Minimum="0" Maximum="1" />
-                <Button x:Name="ExportCancelButton" Content="Cancel export" HorizontalAlignment="Right" Click="CancelExport_Click" />
-            </StackPanel>
+        </ContentControl>
+        <Border x:Name="SourceDragHint" Visibility="Collapsed" IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Padding="12,7" CornerRadius="6" Background="#FF334E78">
+            <TextBlock x:Name="SourceDragText" Text="Add selected footage to movie" FontSize="12"/>
         </Border>
-    </Grid>
+        <Grid x:Name="ExportOverlay" Visibility="Collapsed" IsHitTestVisible="True">
+            <Grid.Background><AcrylicBrush TintColor="#101925" TintOpacity="0.78" TintLuminosityOpacity="0.35" FallbackColor="#E6101925"/></Grid.Background>
+            <Border MaxWidth="440" Margin="24" Padding="28" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#FF202B3A" BorderBrush="#FF44556B" BorderThickness="1">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Exporting your movie" FontSize="20" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="ExportOverlayMessage" Text="Preparing clips…" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                    <ProgressBar x:Name="ExportOverlayProgress" Height="8" Minimum="0" Maximum="1" AutomationProperties.Name="Export progress"/>
+                    <Button x:Name="ExportCancelButton" Content="Cancel export" HorizontalAlignment="Right" Click="CancelExport_Click"/>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

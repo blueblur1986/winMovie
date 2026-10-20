@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.0-beta.8
+
+- Simplify the editor with a grouped file toolbar, focused clip/transition settings, fixed title Apply/Cancel actions, clear loading and save states, and accessible names and shortcuts.
+- Align title, video, and music tracks on one shared timeline with a ruler, zoom, playhead, and common scrolling. Use direct gestures for source range insertion, clip reordering, and track positioning.
+- Add bounded undo/redo, preserve title drafts during navigation, migrate legacy clip titles, validate projects before opening, and offer missing-video relinking.
+- Disable unintended media autoplay, preserve pending seeks during loading, isolate preview progress, and cancel background work when closing.
+- Preserve video when source audio ends early; apply volume after normalization; prevent delayed music from lowering the original audio; render title punctuation literally.
+- Use detected hardware encoding during clip preparation as well as final export, report final encoding progress, protect source files from export overwrite, and check linked media for changes.
+- Add regression checks and debugging notes, and refresh the README and screenshot.
+
 ## v1.0-beta.7
 
 - Make timeline clip reordering work with a direct drag gesture and highlighted insertion point.

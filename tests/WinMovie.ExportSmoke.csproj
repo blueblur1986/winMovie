@@ -8,5 +8,8 @@
   <ItemGroup>
     <Compile Include="../MediaEngine.cs" Link="MediaEngine.cs" />
     <Compile Include="../Models.cs" Link="Models.cs" />
+    <Compile Include="../TimelineLayout.cs" Link="TimelineLayout.cs" />
+    <Compile Include="../ProjectDocument.cs" Link="ProjectDocument.cs" />
+    <Compile Include="../EditHistory.cs" Link="EditHistory.cs" />
   </ItemGroup>
 </Project>

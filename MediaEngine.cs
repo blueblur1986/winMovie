@@ -17,9 +17,9 @@ public static class MediaEngine
     private static bool _previewCachePruned;
     public static string F(double number) => number.ToString("0.######", C);
 
-    public static async Task<MediaAsset> ProbeAsync(string path)
+    public static async Task<MediaAsset> ProbeAsync(string path, CancellationToken token = default)
     {
-        var result = await RunAsync("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", path]);
+        var result = await RunAsync("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", path], token);
         if (result.ExitCode != 0) throw new InvalidOperationException(result.Error);
         using var json = JsonDocument.Parse(result.Output);
         var root = json.RootElement;
@@ -29,15 +29,22 @@ public static class MediaEngine
         var durationText = root.GetProperty("format").GetProperty("duration").GetString();
         if (!double.TryParse(durationText, NumberStyles.Float, C, out var duration) || duration <= 0)
             throw new InvalidOperationException("Could not read the video duration.");
-        var video = streams.First(x => x.GetProperty("codec_type").GetString() == "video");
+        var video = streams.FirstOrDefault(x => x.GetProperty("codec_type").GetString() == "video" &&
+            (!x.TryGetProperty("disposition", out var flags) || !flags.TryGetProperty("attached_pic", out var attached) || attached.GetInt32() == 0));
+        if (video.ValueKind == JsonValueKind.Undefined) throw new InvalidOperationException("This file has no video stream.");
+        var width = video.GetProperty("width").GetInt32();
+        var height = video.GetProperty("height").GetInt32();
+        if (video.TryGetProperty("side_data_list", out var sideData))
+            foreach (var data in sideData.EnumerateArray())
+                if (data.TryGetProperty("rotation", out var rotation) && Math.Abs(rotation.GetDouble()) % 180 == 90) (width, height) = (height, width);
         return new MediaAsset { Path = path, Duration = duration,
-            Width = video.GetProperty("width").GetInt32(), Height = video.GetProperty("height").GetInt32(),
+            Width = width, Height = height,
             HasAudio = streams.Any(x => x.GetProperty("codec_type").GetString() == "audio") };
     }
 
-    public static async Task<double> ProbeAudioDurationAsync(string path)
+    public static async Task<double> ProbeAudioDurationAsync(string path, CancellationToken token = default)
     {
-        var result = await RunAsync("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", path]);
+        var result = await RunAsync("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", path], token);
         if (result.ExitCode != 0) throw new InvalidOperationException(result.Error);
         using var json = JsonDocument.Parse(result.Output);
         if (!json.RootElement.GetProperty("streams").EnumerateArray().Any(x => x.GetProperty("codec_type").GetString() == "audio"))
@@ -48,19 +55,19 @@ public static class MediaEngine
         return duration;
     }
 
-    public static async Task<string> ThumbnailAsync(string path, double time, string directory)
+    public static async Task<string> ThumbnailAsync(string path, double time, string directory, CancellationToken token = default)
     {
         Directory.CreateDirectory(directory);
         var image = System.IO.Path.Combine(directory, Guid.NewGuid().ToString("N") + ".jpg");
         var result = await RunAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-ss", F(time),
-            "-i", path, "-frames:v", "1", "-vf", "scale=320:-2", image]);
+            "-i", path, "-frames:v", "1", "-vf", "scale=320:-2", image], token);
         if (result.ExitCode != 0) throw new InvalidOperationException(result.Error);
         return image;
     }
 
-    public static async Task<IReadOnlyList<string>> AvailableEncodersAsync()
+    public static async Task<IReadOnlyList<string>> AvailableEncodersAsync(CancellationToken token = default)
     {
-        var result = await RunAsync("ffmpeg", ["-hide_banner", "-encoders"]);
+        var result = await RunAsync("ffmpeg", ["-hide_banner", "-encoders"], token);
         var encoders = new List<string> { "Software (H.264)" };
         if (result.Output.Contains("h264_nvenc")) encoders.Add("NVIDIA NVENC");
         if (result.Output.Contains("h264_qsv")) encoders.Add("Intel Quick Sync");
@@ -70,7 +77,7 @@ public static class MediaEngine
 
     public static async Task<string> DetectBestEncoderAsync(CancellationToken token = default)
     {
-        var available = await AvailableEncodersAsync();
+        var available = await AvailableEncodersAsync(token);
         foreach (var encoder in new[] { "NVIDIA NVENC", "Intel Quick Sync", "AMD AMF" })
         {
             if (!available.Contains(encoder)) continue;
@@ -87,14 +94,7 @@ public static class MediaEngine
         var smallest = int.MaxValue;
         foreach (var path in project.Clips.Select(x => x.SourcePath).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var asset = project.Assets.FirstOrDefault(x => string.Equals(x.Path, path, StringComparison.OrdinalIgnoreCase));
-            if (asset is null || asset.Height <= 0)
-            {
-                var probed = await ProbeAsync(path);
-                if (asset is not null) { asset.Width = probed.Width; asset.Height = probed.Height; asset.HasAudio = probed.HasAudio; }
-                else project.Assets.Add(probed);
-                asset ??= probed;
-            }
+            var asset = await ProbeAsync(path);
             smallest = Math.Min(smallest, asset.Height);
         }
         return smallest == int.MaxValue ? 0 : smallest;
@@ -118,24 +118,36 @@ public static class MediaEngine
     public static async Task ExportAsync(MovieProject project, string output, ExportSettings settings,
         Action<double, string> progress, CancellationToken cancellationToken)
     {
+        project = ProjectDocument.Clone(project);
         if (project.Clips.Count == 0) throw new InvalidOperationException("Add a clip to the timeline first.");
+        var destination = Path.GetFullPath(output);
+        if (project.Clips.Any(x => string.Equals(Path.GetFullPath(x.SourcePath), destination, StringComparison.OrdinalIgnoreCase)) ||
+            project.Music.Any(x => string.Equals(Path.GetFullPath(x.Path), destination, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("Export to a new filename to keep the original media.");
+        if (settings.Width < 2 || settings.Height < 2 || settings.Width % 2 != 0 || settings.Height % 2 != 0)
+            throw new ArgumentException("Choose an even export width and height of at least two pixels.");
         var temp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "WinMovie-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
         try
         {
             if (settings.Preview) PrunePreviewSegmentCache();
+            var media = new Dictionary<string, MediaAsset>(StringComparer.OrdinalIgnoreCase);
+            foreach (var path in project.Clips.Select(x => x.SourcePath).Distinct(StringComparer.OrdinalIgnoreCase))
+                media[path] = await ProbeAsync(path, cancellationToken);
+            foreach (var path in project.Music.Select(x => x.Path).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var length = await ProbeAudioDurationAsync(path, cancellationToken);
+                if (project.Music.Any(x => string.Equals(x.Path, path, StringComparison.OrdinalIgnoreCase) && x.Out > length + .05))
+                    throw new InvalidOperationException($"Music has changed: {Path.GetFileName(path)} is now {F(length)} seconds long. Edit its trim before exporting.");
+            }
             var segments = new List<string>();
             for (var i = 0; i < project.Clips.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var clip = project.Clips[i];
-                var asset = project.Assets.FirstOrDefault(x => x.Path == clip.SourcePath)
-                    ?? await ProbeAsync(clip.SourcePath);
-                if (asset.Width <= 0 || asset.Height <= 0)
-                {
-                    var probed = await ProbeAsync(clip.SourcePath);
-                    asset.Width = probed.Width; asset.Height = probed.Height; asset.HasAudio = probed.HasAudio;
-                }
+                var asset = media[clip.SourcePath];
+                if (clip.Out > asset.Duration + .05)
+                    throw new InvalidOperationException($"Video has changed: {Path.GetFileName(clip.SourcePath)} is now {F(asset.Duration)} seconds long. Shorten the clip trim before exporting.");
                 var segment = System.IO.Path.Combine(temp, $"segment-{i:000}.mp4");
                 if (settings.Preview) await RenderCachedPreviewSegmentAsync(clip, asset, segment, temp, settings, cancellationToken);
                 else await RenderSegmentAsync(clip, asset, segment, temp, settings, cancellationToken);
@@ -143,7 +155,7 @@ public static class MediaEngine
                 progress(.8 * (i + 1d) / project.Clips.Count, $"Preparing clip {i + 1} of {project.Clips.Count}");
             }
             progress(.82, "Encoding final video");
-            await JoinAsync(project, segments, output, temp, settings, cancellationToken);
+            await JoinAsync(project, segments, output, temp, settings, progress, cancellationToken);
             progress(1, "Export complete");
         }
         finally
@@ -159,7 +171,8 @@ public static class MediaEngine
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         { await RenderSegmentAsync(clip, asset, output, temp, settings, token); return; }
         var source = new FileInfo(clip.SourcePath);
-        var identity = $"{source.FullName}|{source.Length}|{source.LastWriteTimeUtc.Ticks}|{settings.Width}x{settings.Height}|{settings.Encoder}|{JsonSerializer.Serialize(clip)}";
+        var segmentSettings = JsonSerializer.Serialize(new { clip.In, clip.Out, clip.Speed, clip.KeepPitch, clip.Volume, clip.Normalize, clip.TitlePreset, clip.Title, clip.FadeIn, clip.FadeOut, clip.FadeInDuration, clip.FadeOutDuration });
+        var identity = $"v2|{source.FullName}|{source.Length}|{source.LastWriteTimeUtc.Ticks}|{settings.Width}x{settings.Height}|{settings.Encoder}|{segmentSettings}";
         var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
         var cached = System.IO.Path.Combine(PreviewSegmentDirectory, key + ".mp4");
         await PreviewCacheGate.WaitAsync(token);
@@ -167,7 +180,7 @@ public static class MediaEngine
         {
             if (File.Exists(cached) && new FileInfo(cached).Length > 1024)
             {
-                File.Copy(cached, output, true);
+                await CopyFileAsync(cached, output, token);
                 try { File.SetLastWriteTimeUtc(cached, DateTime.UtcNow); } catch { }
                 return;
             }
@@ -176,18 +189,31 @@ public static class MediaEngine
         finally { PreviewCacheGate.Release(); }
         await RenderSegmentAsync(clip, asset, output, temp, settings, token);
         await PreviewCacheGate.WaitAsync(token);
+        var stagedCache = cached + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            if (!File.Exists(cached)) File.Copy(output, cached);
+            if (!File.Exists(cached))
+            {
+                await CopyFileAsync(output, stagedCache, token);
+                File.Move(stagedCache, cached);
+                PrunePreviewSegmentCache(true);
+            }
         }
         catch (IOException) { /* Keep the completed preview even when caching fails. */ }
         catch (UnauthorizedAccessException) { /* Keep the completed preview even when caching fails. */ }
-        finally { PreviewCacheGate.Release(); }
+        finally { try { File.Delete(stagedCache); } catch { } PreviewCacheGate.Release(); }
     }
 
-    private static void PrunePreviewSegmentCache()
+    private static async Task CopyFileAsync(string source, string destination, CancellationToken token)
     {
-        if (_previewCachePruned) return;
+        await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+        await using var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+        await input.CopyToAsync(output, token);
+    }
+
+    private static void PrunePreviewSegmentCache(bool force = false)
+    {
+        if (_previewCachePruned && !force) return;
         _previewCachePruned = true;
         try
         {
@@ -215,7 +241,7 @@ public static class MediaEngine
 
         var boundedWidth = Math.Max(2, Math.Min(settings.Width, asset.Width) / 2 * 2);
         var boundedHeight = Math.Max(2, Math.Min(settings.Height, asset.Height) / 2 * 2);
-        var video = $"[0:v]setpts=(PTS-STARTPTS)/{F(clip.Speed)},fps=30,scale={boundedWidth}:{boundedHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad={settings.Width}:{settings.Height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p";
+        var video = $"[0:V:0]setpts=(PTS-STARTPTS)/{F(clip.Speed)},fps=30,scale={boundedWidth}:{boundedHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad={settings.Width}:{settings.Height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p";
         var fadeIn = Math.Clamp(clip.FadeInDuration, .05, Math.Max(.05, duration / 2));
         var fadeOut = Math.Clamp(clip.FadeOutDuration, .05, Math.Max(.05, duration / 2));
         if (clip.FadeIn) video += $",fade=t=in:st=0:d={F(fadeIn)}";
@@ -229,7 +255,7 @@ public static class MediaEngine
             var size = clip.TitlePreset == TitlePreset.Opening ? 74 : clip.TitlePreset == TitlePreset.LowerThird ? 48 : 62;
             var x = clip.TitlePreset == TitlePreset.LowerThird ? "100" : "(w-text_w)/2";
             var y = clip.TitlePreset == TitlePreset.LowerThird ? "h-170" : "(h-text_h)/2";
-            video += $",drawtext=fontfile='{FilterPath(fontPath)}':textfile='{FilterPath(textPath)}':fontsize={size}:fontcolor=white:shadowcolor=black@0.8:shadowx=3:shadowy=3:x={x}:y={y}";
+            video += $",drawtext=expansion=none:fontfile='{FilterPath(fontPath)}':textfile='{FilterPath(textPath)}':fontsize={size}:fontcolor=white:shadowcolor=black@0.8:shadowx=3:shadowy=3:x={x}:y={y}";
         }
         video += "[v]";
 
@@ -239,21 +265,21 @@ public static class MediaEngine
         {
             if (clip.KeepPitch) audio += "," + TempoFilters(clip.Speed);
             else audio += $",asetrate={F(48000 * clip.Speed)},aresample=48000";
-            if (Math.Abs(clip.Volume - 1) > .001) audio += $",volume={F(clip.Volume)}";
             if (clip.Normalize) audio += ",loudnorm=I=-16:TP=-1.5:LRA=11";
+            if (Math.Abs(clip.Volume - 1) > .001) audio += $",volume={F(clip.Volume)}";
         }
-        audio += $",atrim=duration={F(duration)},asetpts=PTS-STARTPTS";
+        audio += $",aresample=48000,apad,atrim=duration={F(duration)},asetpts=PTS-STARTPTS";
         if (clip.FadeIn) audio += $",afade=t=in:st=0:d={F(fadeIn)}";
         if (clip.FadeOut) audio += $",afade=t=out:st={F(Math.Max(0, duration - fadeOut))}:d={F(fadeOut)}";
         audio += "[a]";
-        var encoder = settings.Preview ? EncoderName(settings.Encoder) : "libx264";
+        var encoder = EncoderName(settings.Encoder);
         args.AddRange(["-filter_complex", video + ";" + audio, "-map", "[v]", "-map", "[a]", "-c:v", encoder]);
         if (encoder == "libx264") args.AddRange(["-preset", settings.Preview ? "ultrafast" : "veryfast", "-crf", settings.Preview ? "30" : "18"]);
-        else if (encoder == "h264_nvenc") args.AddRange(["-preset", "p1", "-cq", "30"]);
-        else args.AddRange(["-b:v", "2M"]);
-        args.AddRange(["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", settings.Preview ? "96k" : "192k", "-ar", "48000", "-ac", "2", "-shortest", output]);
+        else if (encoder == "h264_nvenc") args.AddRange(["-preset", settings.Preview ? "p1" : "p4", "-cq", settings.Preview ? "30" : "18"]);
+        else args.AddRange(["-b:v", settings.Preview ? "2M" : "12M"]);
+        args.AddRange(["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", settings.Preview ? "96k" : "192k", "-ar", "48000", "-ac", "2", "-t", F(duration), "-shortest", output]);
         var result = await RunAsync("ffmpeg", args, token);
-        if (result.ExitCode != 0 && settings.Preview && encoder != "libx264")
+        if (result.ExitCode != 0 && encoder != "libx264")
         {
             await RenderSegmentAsync(clip, asset, output, temp, settings with { Encoder = "Software (H.264)" }, token);
             return;
@@ -283,7 +309,7 @@ public static class MediaEngine
                 (0, height, "(h-text_h)/2") :
                 ((int)(height * .35), (int)(height * .30), "(h-text_h)/2");
             var size = Math.Max(12, (int)Math.Round(Math.Clamp(title.FontSize, 16, 160) * height / 1080d));
-            var drawText = $"fontfile='{FilterPath(fontPath)}':textfile='{FilterPath(textPath)}':fontsize={size}";
+            var drawText = $"expansion=none:fontfile='{FilterPath(fontPath)}':textfile='{FilterPath(textPath)}':fontsize={size}";
             var graph = new StringBuilder("[0:v]format=rgba,colorchannelmixer=aa=0[clear];");
             var baseLayer = "[clear]";
             if (title.Shadow)
@@ -323,24 +349,24 @@ public static class MediaEngine
     }
 
     private static async Task JoinAsync(MovieProject project, IReadOnlyList<string> segments,
-        string output, string temp, ExportSettings settings, CancellationToken token)
+        string output, string temp, ExportSettings settings, Action<double, string> progress, CancellationToken token)
     {
         var clips = project.Clips;
         var args = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
         foreach (var segment in segments) args.AddRange(["-i", segment]);
-        if (project.Music.Any(x => x.Duration >= .08 && !File.Exists(x.Path)))
-            throw new FileNotFoundException("A background music file is missing.");
+        if (project.Music.FirstOrDefault(x => x.Duration >= .08 && !File.Exists(x.Path)) is { } missing)
+            throw new FileNotFoundException($"Background music is missing: {missing.Path}", missing.Path);
         var music = project.Music.Where(x => x.Duration >= .08).ToList();
         foreach (var track in music) args.AddRange(["-ss", F(track.In), "-t", F(track.Duration), "-i", track.Path]);
         string video = "[0:v]", audio = "[0:a]";
+        var layout = new TimelineLayout(clips);
         var total = clips[0].Duration;
         var graph = new StringBuilder();
         for (var i = 1; i < clips.Count; i++)
         {
             var nextV = $"[v{i}]";
             var nextA = $"[a{i}]";
-            var overlap = clips[i].TransitionIn == TransitionKind.Cut ? 0 :
-                Math.Min(Math.Clamp(clips[i].TransitionDuration, .05, 10), Math.Min(total, clips[i].Duration) / 2);
+            var overlap = layout.Overlaps[i];
             if (overlap <= .02)
             {
                 graph.Append($"{video}[{i}:v]concat=n=2:v=1:a=0{nextV};");
@@ -405,21 +431,26 @@ public static class MediaEngine
             var delay = (int)Math.Round(Math.Max(0, track.Start) * 1000);
             musicFilter += $",adelay={delay}|{delay}[music{i}]";
             graph.Append(musicFilter + ";");
-            graph.Append($"{audio}[music{i}]amix=inputs=2:duration=first:dropout_transition=0[mix{i}];");
+            graph.Append($"{audio}[music{i}]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mix{i}];");
             audio = $"[mix{i}]";
         }
+        if (music.Count > 0) { graph.Append($"{audio}alimiter=limit=0.95:level=false[limited];"); audio = "[limited]"; }
         if (graph.Length > 0) args.AddRange(["-filter_complex", graph.ToString().TrimEnd(';')]);
         args.AddRange(["-map", video.StartsWith("[0:") ? video.Trim('[', ']') : video,
             "-map", audio.StartsWith("[0:") ? audio.Trim('[', ']') : audio, "-c:v", EncoderName(settings.Encoder)]);
         if (settings.Encoder == "Software (H.264)") args.AddRange(["-preset", settings.Preview ? "ultrafast" : "medium", "-crf", settings.Preview ? "30" : "20"]);
         else if (settings.Encoder == "NVIDIA NVENC") args.AddRange(["-preset", "p4", "-cq", "22"]);
         else args.AddRange(["-b:v", "8M"]);
-        args.AddRange(["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", settings.Preview ? "96k" : "192k", "-movflags", "+faststart", output]);
-        var result = await RunAsync("ffmpeg", args, token);
+        args.AddRange(["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", settings.Preview ? "96k" : "192k", "-movflags", "+faststart", "-t", F(layout.Duration), "-progress", "pipe:1", "-nostats", output]);
+        var result = await RunAsync("ffmpeg", args, token, line =>
+        {
+            if (line.StartsWith("out_time_us=") && double.TryParse(line[12..], NumberStyles.Float, C, out var microseconds))
+                progress(.82 + .17 * Math.Clamp(microseconds / 1_000_000 / Math.Max(.01, layout.Duration), 0, 1), "Encoding final video");
+        });
         if (result.ExitCode != 0 && settings.Encoder != "Software (H.264)")
         {
             // An encoder may be compiled into FFmpeg without a usable device or driver.
-            await JoinAsync(project, segments, output, temp, settings with { Encoder = "Software (H.264)" }, token);
+            await JoinAsync(project, segments, output, temp, settings with { Encoder = "Software (H.264)" }, progress, token);
             return;
         }
         if (result.ExitCode != 0) throw new InvalidOperationException("MP4 export failed: " + result.Error);
@@ -447,16 +478,41 @@ public static class MediaEngine
     private static string FilterPath(string path) => path.Replace('\\', '/').Replace(":", "\\:").Replace("'", "\\'");
 
     public static async Task<(int ExitCode, string Output, string Error)> RunAsync(string executable,
-        IEnumerable<string> arguments, CancellationToken token = default)
+        IEnumerable<string> arguments, CancellationToken token = default, Action<string>? onOutputLine = null)
     {
+        token.ThrowIfCancellationRequested();
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true,
             RedirectStandardError = true, CreateNoWindow = true };
         foreach (var arg in arguments) start.ArgumentList.Add(arg);
-        using var process = Process.Start(start) ?? throw new InvalidOperationException($"Could not launch {executable}.");
-        using var registration = token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
-        var output = process.StandardOutput.ReadToEndAsync();
-        var error = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync(token);
-        return (process.ExitCode, await output, await error);
+        Process process;
+        try { process = Process.Start(start) ?? throw new InvalidOperationException($"Could not launch {executable}."); }
+        catch (System.ComponentModel.Win32Exception ex)
+        { throw new InvalidOperationException($"Could not find or start {executable}. Install FFmpeg and ffprobe and add them to PATH.", ex); }
+        using (process)
+        {
+            using var registration = token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
+            async Task<string> ReadOutputAsync()
+            {
+                var text = new StringBuilder();
+                while (await process.StandardOutput.ReadLineAsync() is { } line)
+                {
+                    if (text.Length < 2_000_000) text.AppendLine(line);
+                    onOutputLine?.Invoke(line);
+                }
+                return text.ToString();
+            }
+            var output = ReadOutputAsync();
+            var error = process.StandardError.ReadToEndAsync();
+            try { await process.WaitForExitAsync(token); }
+            catch (OperationCanceledException)
+            {
+                try { if (!process.HasExited) process.Kill(true); } catch { }
+                await process.WaitForExitAsync(CancellationToken.None);
+                await Task.WhenAll(output, error);
+                throw;
+            }
+            token.ThrowIfCancellationRequested();
+            return (process.ExitCode, await output, await error);
+        }
     }
 }

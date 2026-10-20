@@ -4,6 +4,7 @@ var root = Path.Combine(Path.GetTempPath(), "WinMovieSmoke-" + Guid.NewGuid().To
 Directory.CreateDirectory(root);
 try
 {
+    RegressionChecks.CheckEditingState();
     var source = Path.Combine(root, "source.mp4");
     var output = Path.Combine(root, "output.mp4");
     var generated = await MediaEngine.RunAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y",
@@ -83,6 +84,7 @@ try
     if (!layeredInfo.HasAudio || layeredInfo.Duration < 2 || layeredInfo.Width != 640)
         throw new Exception("Title and music track render is invalid.");
     Console.WriteLine("PASS: timed title across clips and fading music track");
+    await RegressionChecks.CheckMediaAsync(root, asset, musicPath);
 }
 finally
 {

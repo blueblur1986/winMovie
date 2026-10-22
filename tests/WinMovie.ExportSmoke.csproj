@@ -11,5 +11,6 @@
     <Compile Include="../TimelineLayout.cs" Link="TimelineLayout.cs" />
     <Compile Include="../ProjectDocument.cs" Link="ProjectDocument.cs" />
     <Compile Include="../EditHistory.cs" Link="EditHistory.cs" />
+    <Compile Include="../AudioPlacement.cs" Link="AudioPlacement.cs" />
   </ItemGroup>
 </Project>

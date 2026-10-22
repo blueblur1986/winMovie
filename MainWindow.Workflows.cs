@@ -72,7 +72,7 @@ public sealed partial class MainWindow
         _closed = true;
         _clock.Stop(); _autoSaveTimer.Stop();
         _lifetime.Cancel();
-        CancelPreviewRender(); CancelTitleGraphic();
+        CancelPreviewRender(); CancelTitleGraphic(); CancelClipFrame();
         _player.Dispose();
         try { await Task.WhenAll(_backgroundTasks.ToArray()); } catch { }
         _mediaLoadCts.Dispose();
@@ -159,7 +159,7 @@ public sealed partial class MainWindow
                 if (payload.Kind == "title" && payload.Index < _project.Titles.Count)
                 { _project.Titles[payload.Index].Start = newStart; SelectTitle(payload.Index); }
                 else if (payload.Kind == "music" && payload.Index < _project.Music.Count)
-                { _project.Music[payload.Index].Start = newStart; SelectMusic(payload.Index); }
+                { var audio = _project.Music[payload.Index]; if (audio.LinkedClipId is not null) { Status.Text = "Replacement audio follows its clip. Unlink it in Audio settings to move it independently."; } else audio.Start = newStart; SelectMusic(payload.Index); }
                 InvalidateTimelinePreview(); Status.Text = "Track moved.";
             }
         }
@@ -184,12 +184,13 @@ public sealed partial class MainWindow
     {
         if (FileButton is null) return;
         FileButton.IsEnabled = ImportButton.IsEnabled = SaveButton.IsEnabled = !_commandBusy;
+        AddColorButton.IsEnabled = !_commandBusy;
         ExportButton.IsEnabled = !_commandBusy && _project.Clips.Count > 0;
         AddMusicButton.IsEnabled = !_commandBusy && _project.Clips.Count > 0;
         AddTitleButton.IsEnabled = _project.Clips.Count > 0;
         AddRangeButton.IsEnabled = _selectedAsset is { } asset && File.Exists(asset.Path);
-        PlayButton.IsEnabled = _previewPath is not null || _project.Clips.Count > 0;
-        PreviewSeek.IsEnabled = _previewPath is not null;
+        PlayButton.IsEnabled = _timelineFocused && _project.Clips.Count > 0 || _previewPath is not null && StillPreview.Visibility != Visibility.Visible;
+        PreviewSeek.IsEnabled = _previewPath is not null && StillPreview.Visibility != Visibility.Visible;
         UndoButton.IsEnabled = !_commandBusy && _history.CanUndo;
         RedoButton.IsEnabled = !_commandBusy && _history.CanRedo;
         RemoveSelectionButton.IsEnabled = _selectedClips.Count > 0 || _selectedTitle >= 0 || _selectedMusic >= 0 || _boundarySelected;
@@ -200,7 +201,7 @@ public sealed partial class MainWindow
         ProjectNameLabel.Text = _projectPath is null ? "My Movie" : Path.GetFileNameWithoutExtension(_projectPath);
         var dirty = HasUnsavedChanges();
         SaveStateLabel.Text = dirty ? "Unsaved changes" : _projectPath is null ? "Not saved yet" : "All changes saved";
-        Title = $"{(dirty ? "* " : "")}{ProjectNameLabel.Text} · WinMovie · 1.0 Beta 8";
+        Title = $"{(dirty ? "* " : "")}{ProjectNameLabel.Text} · WinMovie · 1.0 Beta 9";
         UpdateCommands();
     }
 
@@ -244,6 +245,7 @@ public sealed partial class MainWindow
         _selectedBoundary = -1; _boundarySelected = false; _hoveredAsset = null;
         _rangeStart = 0; _rangeEnd = _selectedAsset?.Duration ?? 0; _rangeExplicit = false;
         _timelineFocused = false; _previewPlayback = false; _spaceSourcePlaying = false;
+        CancelClipFrame(); StillPreview.Visibility = Visibility.Collapsed; StillPreview.Source = null;
         _previewPath = null; _pendingPosition = null; _player.Source = null;
         _timelinePosition = 0; _mediaOpening = false;
         ResetClipDrag(); HideTitlePreview();
@@ -321,7 +323,7 @@ public sealed partial class MainWindow
         _timelinePosition = time;
         _previewPlayback = _timelinePreviewPath is not null;
         if (_timelinePreviewPath is { } path) LoadPreview(path, time);
-        else if (SourceAt(time) is { } source) LoadPreview(source.Clip.SourcePath, source.Position);
+        else if (SourceAt(time) is { } source) LoadClipPreview(source.Clip, source.Position);
         PreviewMode.Text = "Movie";
         TimelinePlayhead.Margin = new Thickness(time * _pixelsPerSecond, 0, 0, 0);
     }
@@ -330,12 +332,13 @@ public sealed partial class MainWindow
     {
         var picker = new Windows.Storage.Pickers.FileOpenPicker();
         WinRT.Interop.InitializeWithWindow.Initialize(picker, Hwnd);
-        foreach (var extension in new[] { ".mp4", ".mov", ".mkv", ".avi", ".m4v", ".webm" }) picker.FileTypeFilter.Add(extension);
+        foreach (var extension in asset.Kind == MediaKind.Image ? MediaEngine.ImageExtensions : new[] { ".mp4", ".mov", ".mkv", ".avi", ".m4v", ".webm" }) picker.FileTypeFilter.Add(extension);
         var file = await picker.PickSingleFileAsync();
         if (file is null) return;
         var replacement = await MediaEngine.ProbeAsync(file.Path, _lifetime.Token);
         var clips = _project.Clips.Where(x => string.Equals(x.SourcePath, asset.Path, StringComparison.OrdinalIgnoreCase)).ToArray();
-        if (clips.Any(x => x.Out > replacement.Duration + .05))
+        if (replacement.Kind != asset.Kind) throw new InvalidOperationException("Choose the same type of media as the original.");
+        if (asset.Kind == MediaKind.Video && clips.Any(x => x.Out > replacement.Duration + .05))
             throw new InvalidOperationException("The replacement video is shorter than a range used in this movie. Choose the original file or a longer replacement.");
         foreach (var clip in clips) clip.SourcePath = replacement.Path;
         _project.Assets.Remove(asset);

@@ -4,6 +4,7 @@ namespace WinMovie;
 
 public sealed class MediaAsset
 {
+    public MediaKind Kind { get; set; }
     public string Path { get; set; } = "";
     public double Duration { get; set; }
     public bool HasAudio { get; set; }
@@ -15,10 +16,22 @@ public sealed class MediaAsset
 }
 
 public enum TransitionKind { Cut, Crossfade, FadeThroughBlack, FadeThroughWhite, WipeLeft, WipeRight, SlideLeft, SlideRight }
-public enum TitlePreset { None, Center, LowerThird, Opening }
+public enum TitlePreset { None, Center, LowerThird, Opening, Caption, Corner, Cinema }
+public enum MediaKind { Video, Image, Color }
+public enum ClipFraming { Fit, Fill, Stretch }
+public enum ColorLook { Original, Warm, Cool, Cinema, BlackAndWhite }
 
 public sealed class TimelineClip
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public MediaKind Kind { get; set; }
+    public string Color { get; set; } = "000000";
+    public ClipFraming Framing { get; set; }
+    public double Brightness { get; set; }
+    public double Contrast { get; set; } = 1;
+    public double Saturation { get; set; } = 1;
+    public double Warmth { get; set; }
+    public ColorLook Look { get; set; }
     public string SourcePath { get; set; } = "";
     public double In { get; set; }
     public double Out { get; set; }
@@ -35,6 +48,7 @@ public sealed class TimelineClip
     public double FadeInDuration { get; set; } = .35;
     public double FadeOutDuration { get; set; } = .35;
     [JsonIgnore] public double Duration => Math.Max(0, Out - In) / Math.Max(.01, Speed);
+    [JsonIgnore] public string Name => Kind == MediaKind.Color ? "Solid color" : System.IO.Path.GetFileName(SourcePath);
 }
 
 public sealed class TitleItem
@@ -64,12 +78,20 @@ public sealed class TitleItem
 
 public sealed class MusicClip
 {
+    // Keep the serialized Music collection for compatibility with earlier projects.
+    public string? LinkedClipId { get; set; }
+    public double LinkedSourceIn { get; set; }
+    public double LinkedSourceSpeed { get; set; } = 1;
+    public double SyncOffset { get; set; }
     public string Path { get; set; } = "";
     public double Start { get; set; }
     public double In { get; set; }
     public double Out { get; set; }
-    public double Volume { get; set; } = .45;
-    public bool FadeOut { get; set; } = true;
+    public double Volume { get; set; } = 1;
+    public bool Normalize { get; set; }
+    public bool FadeIn { get; set; }
+    public double FadeInDuration { get; set; } = .25;
+    public bool FadeOut { get; set; }
     public double FadeOutDuration { get; set; } = 2;
     [JsonIgnore] public double Duration => Math.Max(0, Out - In);
 }

@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.0-beta.9
+
+- Import still images with a five-second default and editable duration; choose Fit, Fill, or Stretch framing.
+- Add generated five-second solid color clips, with an RGB/HEX color picker, as title canvases or transitions between scenes.
+- Add Caption, Corner, and Cinema title styles using the same preview/export renderer.
+- Add clip picture adjustments for brightness, contrast, color intensity, and warmth, plus Warm, Cool, Cinema, and Black and white looks with a live frame preview.
+- Generalize Music to Audio for dialogue, effects, and music, with normalization, independent fades, precise positioning, and a menu for selecting overlapping sounds.
+- Extract edited clip audio as 48 kHz, 24-bit PCM WAV; replace it with an enhanced local file that follows clip reordering, trimming, and speed changes, with fine sync adjustment and original sound muting.
+- Add real-media regression coverage for images, generated color, framing pixels, looks, title styles, WAV metadata, and linked audio timing.
+
+
 ## v1.0-beta.8
 
 - Simplify the editor with a grouped file toolbar, focused clip/transition settings, fixed title Apply/Cancel actions, clear loading and save states, and accessible names and shortcuts.

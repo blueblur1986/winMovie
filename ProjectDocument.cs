@@ -23,15 +23,20 @@ public static class ProjectDocument
         foreach (var asset in project.Assets)
         {
             Require(asset is not null && !string.IsNullOrWhiteSpace(asset.Path), "A media file has no path.");
-            Require(Range(asset!.Duration, .001, 604800) && asset.Width >= 0 && asset.Height >= 0, "A media file has invalid duration or dimensions.");
+            Require(Range(asset!.Duration, .001, 604800) && asset.Width >= 0 && asset.Height >= 0 &&
+                Enum.IsDefined(asset.Kind) && asset.Kind != MediaKind.Color, "A media file has invalid duration or dimensions.");
         }
         foreach (var clip in project.Clips)
         {
-            Require(clip is not null && !string.IsNullOrWhiteSpace(clip.SourcePath), "A timeline clip has no source file.");
+            Require(clip is not null && (clip.Kind == MediaKind.Color || !string.IsNullOrWhiteSpace(clip.SourcePath)), "A timeline clip has no source file.");
             Require(Range(clip!.In, 0, 604800) && Range(clip.Out, clip.In + .001, 604800) &&
                 Range(clip.Speed, .25, 4) && Range(clip.Volume, 0, 4) &&
                 Range(clip.TransitionDuration, .05, 10) && Enum.IsDefined(clip.TransitionIn) && Enum.IsDefined(clip.TitlePreset) &&
                 Range(clip.FadeInDuration, .05, 10) && Range(clip.FadeOutDuration, .05, 10), "A timeline clip has invalid trim, speed, audio, or transition settings.");
+            Require(Enum.IsDefined(clip.Kind) && Enum.IsDefined(clip.Framing) && Enum.IsDefined(clip.Look) &&
+                clip.Color is { Length: 6 } && clip.Color.All(Uri.IsHexDigit) && Range(clip.Brightness, -.5, .5) &&
+                Range(clip.Contrast, .5, 2) && Range(clip.Saturation, 0, 2) && Range(clip.Warmth, -1, 1), "A clip has invalid appearance settings.");
+            Require(!string.IsNullOrWhiteSpace(clip.Id) && project.Clips.Count(x => x.Id == clip.Id) == 1, "Clips must have unique identifiers.");
         }
         foreach (var title in project.Titles)
         {
@@ -48,7 +53,9 @@ public static class ProjectDocument
         {
             Require(music is not null && !string.IsNullOrWhiteSpace(music.Path), "A music track has no source file.");
             Require(Range(music!.Start, 0, 604800) && Range(music.In, 0, 604800) && Range(music.Out, music.In + .001, 604800) &&
-                Range(music.Volume, 0, 4) && Range(music.FadeOutDuration, .05, 30), "A music track has invalid timing or audio settings.");
+                Range(music.Volume, 0, 4) && Range(music.FadeOutDuration, .05, 30) && Range(music.FadeInDuration, .05, 30), "An audio track has invalid timing or audio settings.");
+            Require(music.LinkedClipId is null || project.Clips.Any(x => x.Id == music.LinkedClipId && x.Kind == MediaKind.Video), "Replacement audio refers to a missing video clip.");
+            Require(Range(music.LinkedSourceIn, 0, 604800) && Range(music.LinkedSourceSpeed, .25, 4) && Range(music.SyncOffset, -30, 30), "Replacement audio has invalid synchronization settings.");
         }
     }
 

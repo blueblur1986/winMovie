@@ -24,7 +24,7 @@
                     <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                         <Image Source="Assets/WinMovie.png" Width="22" Height="22"/>
                         <TextBlock Text="WinMovie" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                        <TextBlock Text="1.0 Beta 8" Opacity="0.55" VerticalAlignment="Center"/>
+                        <TextBlock Text="1.0 Beta 9" Opacity="0.55" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Grid>
                 <CommandBar Grid.Row="1" DefaultLabelPosition="Right" Background="#1C242D" IsDynamicOverflowEnabled="True">
@@ -43,7 +43,7 @@
                             </MenuFlyout>
                         </AppBarButton.Flyout>
                     </AppBarButton>
-                    <AppBarButton x:Name="ImportButton" Label="Import media" Icon="Add" Click="Import_Click" ToolTipService.ToolTip="Import video (Ctrl+I)"/>
+                    <AppBarButton x:Name="ImportButton" Label="Import media" Icon="Add" Click="Import_Click" ToolTipService.ToolTip="Import video or photos (Ctrl+I)"/>
                     <AppBarButton x:Name="SaveButton" Label="Save" Icon="Save" Click="Save_Click" ToolTipService.ToolTip="Save project (Ctrl+S)"/>
                     <AppBarSeparator/>
                     <AppBarButton x:Name="UndoButton" Label="Undo" Icon="Undo" Click="Undo_Click" IsEnabled="False" ToolTipService.ToolTip="Undo (Ctrl+Z)"/>
@@ -71,7 +71,7 @@
                             <StackPanel x:Name="EmptyMediaPanel" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8" IsHitTestVisible="False">
                                 <FontIcon Glyph="&#xE714;" FontSize="28" Opacity="0.45" HorizontalAlignment="Center"/>
                                 <TextBlock Text="Start with your footage" FontSize="16" HorizontalAlignment="Center"/>
-                                <TextBlock Text="Choose Import media to add video.&#x0a;Hover to skim. Drag across frames to select." TextAlignment="Center" Opacity="0.6" TextWrapping="Wrap" MaxWidth="280"/>
+                                <TextBlock Text="Import video or photos to begin.&#x0a;Hover to skim. Drag across frames to select." TextAlignment="Center" Opacity="0.6" TextWrapping="Wrap" MaxWidth="280"/>
                             </StackPanel>
                         </Grid>
                         <Grid Grid.Row="2" ColumnSpacing="8">
@@ -100,6 +100,7 @@
                         </Grid>
                         <Grid x:Name="PreviewHost" Grid.Row="1" Background="#080B0F" MinHeight="100" SizeChanged="PreviewHost_SizeChanged">
                             <MediaPlayerElement x:Name="Preview" AreTransportControlsEnabled="False" Stretch="Uniform"/>
+                            <Image x:Name="StillPreview" Visibility="Collapsed" Stretch="Uniform" IsHitTestVisible="False"/>
                             <Border x:Name="TitleBackgroundPreview" Visibility="Collapsed" Height="100" HorizontalAlignment="Stretch" VerticalAlignment="Center" IsHitTestVisible="False"/>
                             <Image x:Name="TitleGraphicPreview" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Fill" Tapped="TitleGraphic_Tapped" AutomationProperties.Name="Edit title in preview"/>
                             <TextBox x:Name="TitleOverlay" Visibility="Collapsed" TextChanged="TitleOverlay_TextChanged" HorizontalAlignment="Center" VerticalAlignment="Center" Width="420" FontSize="27" TextAlignment="Center" PlaceholderText="Click to edit title" Background="Transparent" BorderThickness="0"/>
@@ -126,20 +127,26 @@
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <TextBlock Text="Movie" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
                             <TextBlock x:Name="ProjectDuration" Opacity="0.6" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Button x:Name="AddColorButton" Content="＋ Color" Click="AddColor_Click" ToolTipService.ToolTip="Add a five-second solid color clip"/>
                             <Button x:Name="ClipSettingsButton" Content="Clip settings" IsEnabled="False">
                                 <Button.Flyout><Flyout Placement="Top">
                                     <ScrollViewer MaxHeight="430" VerticalScrollBarVisibility="Auto">
                                         <StackPanel Spacing="10" Width="280">
                                             <TextBlock x:Name="ClipSettingsHeading" Text="Clip settings" FontSize="18" FontWeight="SemiBold"/>
+                                            <StackPanel x:Name="TrimSettingsPanel" Spacing="8">
                                             <TextBlock Text="Trim source (seconds)"/>
                                             <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                                                 <NumberBox x:Name="TrimInBox" Header="From" Minimum="0" SmallChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="Trim_ValueChanged"/>
                                                 <NumberBox x:Name="TrimOutBox" Grid.Column="1" Header="To" Minimum="0" SmallChange="0.1" SpinButtonPlacementMode="Compact" ValueChanged="Trim_ValueChanged"/>
                                             </Grid>
+                                            </StackPanel>
+                                            <StackPanel x:Name="ClipExtraSettings" Spacing="8"/>
                                             <Button x:Name="SpeedButton" Content="Speed: 100%…" Click="Speed_Click"/>
+                                            <StackPanel x:Name="ClipAudioControls" Spacing="8">
                                             <TextBlock x:Name="VolumeLabel" Text="Volume · 100%"/>
                                             <Slider x:Name="VolumeSlider" Minimum="0" Maximum="4" StepFrequency="0.05" ValueChanged="InspectorValue_Changed" AutomationProperties.Name="Clip volume multiplier"/>
                                             <CheckBox x:Name="NormalizeBox" Content="Normalize loudness" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed"/>
+                                            </StackPanel>
                                             <CheckBox x:Name="FadeInBox" Content="Fade clip in" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed"/>
                                             <CheckBox x:Name="FadeOutBox" Content="Fade clip out" Checked="InspectorCheck_Changed" Unchecked="InspectorCheck_Changed"/>
                                         </StackPanel>
@@ -165,7 +172,7 @@
                         <Grid Margin="0,0,0,16"><Grid.RowDefinitions><RowDefinition Height="24"/><RowDefinition Height="44"/><RowDefinition Height="84"/><RowDefinition Height="44"/></Grid.RowDefinitions>
                             <Button x:Name="AddTitleButton" Grid.Row="1" Content="＋ Title" Click="AddTitle_Click" Padding="6,3" VerticalAlignment="Center" ToolTipService.ToolTip="Add a title at the playhead"/>
                             <TextBlock Grid.Row="2" Text="Video" VerticalAlignment="Center" Opacity="0.6"/>
-                            <Button x:Name="AddMusicButton" Grid.Row="3" Content="＋ Music" Click="AddMusic_Click" Padding="6,3" VerticalAlignment="Center"/>
+                            <Button x:Name="AddMusicButton" Grid.Row="3" Content="Audio ▾" Click="AudioTrackMenu_Click" Padding="6,3" VerticalAlignment="Center" ToolTipService.ToolTip="Add or select audio · music, speech, and sound effects"/>
                         </Grid>
                         <ScrollViewer x:Name="TimelineScroller" Grid.Column="1" HorizontalScrollBarVisibility="Visible" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
                             <Grid x:Name="TimelineTracks" Width="800" Height="196" HorizontalAlignment="Left">
@@ -190,7 +197,7 @@
             <Grid.Background><AcrylicBrush TintColor="#101925" TintOpacity="0.78" TintLuminosityOpacity="0.35" FallbackColor="#E6101925"/></Grid.Background>
             <Border MaxWidth="440" Margin="24" Padding="28" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#FF202B3A" BorderBrush="#FF44556B" BorderThickness="1">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Exporting your movie" FontSize="20" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="ExportOverlayTitle" Text="Exporting your movie" FontSize="20" FontWeight="SemiBold"/>
                     <TextBlock x:Name="ExportOverlayMessage" Text="Preparing clips…" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                     <ProgressBar x:Name="ExportOverlayProgress" Height="8" Minimum="0" Maximum="1" AutomationProperties.Name="Export progress"/>
                     <Button x:Name="ExportCancelButton" Content="Cancel export" HorizontalAlignment="Right" Click="CancelExport_Click"/>

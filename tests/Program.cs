@@ -85,6 +85,7 @@ try
         throw new Exception("Title and music track render is invalid.");
     Console.WriteLine("PASS: timed title across clips and fading music track");
     await RegressionChecks.CheckMediaAsync(root, asset, musicPath);
+    await Beta9Checks.RunAsync(root, asset);
 }
 finally
 {
